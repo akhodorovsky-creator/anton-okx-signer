@@ -1,0 +1,14 @@
+{
+  "name": "anton-okx-signer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Secure OKX request signer for ANTON Signal",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
