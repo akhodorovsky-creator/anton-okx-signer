@@ -3,7 +3,7 @@ const http = require("node:http");
 const crypto = require("node:crypto");
 
 const PORT = Number(process.env.PORT || 3000);
-const OKX_BASE_URL = "https://www.okx.com";
+const OKX_BASE_URL = process.env.OKX_BASE_URL || "https://eea.okx.com";
 const LIVE = String(process.env.LIVE || "false").toLowerCase() === "true";
 const INST_ID = "BTC-USDT";
 const BASE_CCY = "BTC";
