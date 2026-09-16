@@ -1,12 +1,13 @@
 {
   "name": "anton-okx-signer",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
-  "description": "Guarded OKX spot execution for ANTON Signal",
-  "main": "safety-gateway.js",
+  "description": "Guarded OKX spot execution and independent position monitoring for ANTON Signal",
+  "main": "risk-monitor.js",
   "scripts": {
-    "start": "node safety-gateway.js",
-    "check": "node --check safety-gateway.js && node --check server.js"
+    "start": "node risk-monitor.js",
+    "check": "node --check risk-monitor.js && node --check safety-gateway.js && node --check server.js",
+    "test": "node --test risk-monitor.test.js"
   },
   "engines": {
     "node": ">=20"
