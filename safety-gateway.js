@@ -9,6 +9,8 @@ const path = require("node:path");
 const PUBLIC_PORT = Number(process.env.PORT || 3000);
 const INTERNAL_PORT = PUBLIC_PORT + 1;
 const MAX_BODY_BYTES = 64 * 1024;
+const CAPITAL_CAP_EUR = 200;
+const MAX_ORDER_EUR = Math.min(20, Math.max(0, Number(process.env.MAX_ORDER_EUR || 20)));
 const MAX_SIGNAL_AGE_SECONDS = Math.max(60, Math.min(3600, Number(process.env.MAX_SIGNAL_AGE_SECONDS || 900)));
 let autoBusy = false;
 
@@ -64,6 +66,18 @@ function forward(req, res, body) {
   });
 }
 
+async function positionWithinCapitalCap(authorization) {
+  const response = await fetch(`http://127.0.0.1:${INTERNAL_PORT}/pnl`, {
+    headers: { authorization: authorization || "" }, signal: AbortSignal.timeout(60000)
+  });
+  if (!response.ok) return false;
+  const data = await response.json();
+  const qty = Number(data?.position?.qty);
+  const price = Number(data?.price);
+  if (!Number.isFinite(qty) || qty < 0 || !(price > 0) || !(MAX_ORDER_EUR > 0)) return false;
+  return qty * price + MAX_ORDER_EUR <= CAPITAL_CAP_EUR;
+}
+
 async function readJson(req) {
   let size = 0;
   const chunks = [];
@@ -99,6 +113,17 @@ const server = http.createServer(async (req, res) => {
   try {
     const incoming = await readJson(req);
     const safeInput = currentSignal(incoming);
+    if (safeInput.signal === "BUY") {
+      // Fail closed on missing history, invalid prices or an exhausted capital cap.
+      let withinCap = false;
+      try { withinCap = await positionWithinCapitalCap(req.headers.authorization); }
+      catch (error) { console.error("ANTON_CAP_CHECK_ERROR", error.message); }
+      if (!withinCap) {
+        safeInput.signal = "HOLD";
+        safeInput.actionable = false;
+        console.warn("ANTON_GATEWAY_BUY_BLOCKED: capital cap or unreadable position");
+      }
+    }
     if (incoming.signal === "BUY" && safeInput.signal !== "BUY") {
       console.warn("ANTON_GATEWAY_BUY_BLOCKED: invalid or stale political/market evidence");
     }
