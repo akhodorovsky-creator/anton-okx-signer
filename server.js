@@ -8,7 +8,7 @@ const LIVE = String(process.env.LIVE || "false").toLowerCase() === "true";
 const INST_ID = "BTC-EUR";
 const BASE_CCY = "BTC";
 const QUOTE_CCY = "EUR";
-const ORDER_EUR = Math.min(Number(process.env.MAX_ORDER_EUR || 20), 5);
+const ORDER_EUR = Math.min(Math.max(Number(process.env.MAX_ORDER_EUR || 20), 0), 20);
 const TAKE_PROFIT = 0.05;
 const STOP_LOSS = 0.02;
 const ORDER_PREFIX = "ANTON";
@@ -59,7 +59,11 @@ function logAutoResult(result) {
     reason: result && result.reason || null,
     mode: result && result.mode || (LIVE ? "LIVE" : "DEMO"),
     price: result && result.price || null,
-    position: result && result.position || null
+    position: result && result.position || null,
+    orderEur: result && result.orderEur || null,
+    minSz: result && result.minSz || null,
+    estimatedMinEur: result && result.estimatedMinEur || null,
+    availableEur: result && result.availableEur || null
   };
   console.log("ANTON_AUTO_RESULT " + JSON.stringify(payload));
 }
@@ -180,11 +184,20 @@ async function getLastPrice() {
   return price;
 }
 
-async function getAvailableBtc() {
-  const result = await okxRequest({ path: "/api/v5/account/balance?ccy=" + BASE_CCY });
+async function getAvailableBalance(ccy) {
+  const result = await okxRequest({ path: "/api/v5/account/balance?ccy=" + ccy });
   const details = result.data.data && result.data.data[0] && result.data.data[0].details;
-  const row = Array.isArray(details) ? details.find(x => x.ccy === BASE_CCY) : null;
+  const row = Array.isArray(details) ? details.find(x => x.ccy === ccy) : null;
   return Number(row && row.availBal || 0);
+}
+
+async function getInstrumentLimits() {
+  const result = await okxRequest({ path: "/api/v5/public/instruments?instType=SPOT&instId=" + INST_ID });
+  const row = result.data.data && result.data.data[0];
+  const minSz = Number(row && row.minSz || 0);
+  const lotSz = Number(row && row.lotSz || 0);
+  if (!(minSz > 0)) throw new Error("Invalid OKX minimum size for " + INST_ID);
+  return { minSz, lotSz };
 }
 
 async function getPnlSnapshot() {
@@ -219,7 +232,7 @@ async function autoTrade(input) {
     else if (actionable && signal === "SELL") reason = "STRATEGY_SELL";
     if (!reason) return { action: "HOLD_POSITION", mode: LIVE ? "LIVE" : "DEMO", price, position };
 
-    const available = await getAvailableBtc();
+    const available = await getAvailableBalance(BASE_CCY);
     const sellQty = Math.min(position.qty, available);
     if (!(sellQty > 0.00000001)) throw new Error("Bot position exists but available BTC is insufficient");
     const body = {
@@ -234,18 +247,48 @@ async function autoTrade(input) {
   if (!(actionable && signal === "BUY")) {
     return { action: "WAIT_FOR_BUY", mode: LIVE ? "LIVE" : "DEMO", price, position };
   }
+
+  const [{ minSz }, availableEur] = await Promise.all([
+    getInstrumentLimits(),
+    getAvailableBalance(QUOTE_CCY)
+  ]);
+  const estimatedMinEur = Number((minSz * price * 1.02).toFixed(2));
+  if (ORDER_EUR < estimatedMinEur) {
+    return {
+      action: "BLOCKED_MIN_SIZE",
+      reason: "ORDER_BELOW_OKX_MINIMUM",
+      mode: LIVE ? "LIVE" : "DEMO",
+      price,
+      position,
+      orderEur: ORDER_EUR,
+      minSz,
+      estimatedMinEur
+    };
+  }
+  if (availableEur + 1e-9 < ORDER_EUR) {
+    return {
+      action: "BLOCKED_INSUFFICIENT_EUR",
+      reason: "AVAILABLE_EUR_BELOW_ORDER",
+      mode: LIVE ? "LIVE" : "DEMO",
+      price,
+      position,
+      orderEur: ORDER_EUR,
+      availableEur
+    };
+  }
+
   const body = {
     instId: INST_ID, tdMode: "cash", side: "buy", ordType: "market",
     sz: String(ORDER_EUR), tgtCcy: "quote_ccy", clOrdId: orderId(), tag: ORDER_PREFIX
   };
   const order = await okxRequest({ method: "POST", path: "/api/v5/trade/order", body });
-  return { action: "BUY", reason: "STRATEGY_BUY", mode: LIVE ? "LIVE" : "DEMO", price, position, order: order.data };
+  return { action: "BUY", reason: "STRATEGY_BUY", mode: LIVE ? "LIVE" : "DEMO", price, position, orderEur: ORDER_EUR, order: order.data };
 }
 
 const server = http.createServer(async (req, res) => {
   try {
     if (req.method === "GET" && req.url === "/health") {
-      return json(res, 200, { ok: true, live: LIVE, mode: LIVE ? "LIVE" : "DEMO", auto: true });
+      return json(res, 200, { ok: true, live: LIVE, mode: LIVE ? "LIVE" : "DEMO", auto: true, orderEur: ORDER_EUR });
     }
     if (!safeEqual(req.headers.authorization, "Bearer " + required("SIGNER_TOKEN"))) {
       return json(res, 401, { ok: false, error: "Unauthorized" });
