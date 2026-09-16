@@ -67,6 +67,20 @@ function logAutoResult(result) {
   };
   console.log("ANTON_AUTO_RESULT " + JSON.stringify(payload));
 }
+function logAutoDecision(input, decisionReason) {
+  const signal = input && input.signal ? String(input.signal).toUpperCase() : "MISSING";
+  const actionable = input && (input.actionable === true || String(input.actionable).toLowerCase() === "true");
+  const confirmLive = input && (input.confirmLive === true || String(input.confirmLive).toLowerCase() === "true");
+  const payload = {
+    signal,
+    actionable,
+    confirmLive,
+    decision_reason: decisionReason,
+    mode: LIVE ? "LIVE" : "DEMO",
+    timestamp: new Date().toISOString()
+  };
+  console.log("ANTON_AUTO_DECISION " + JSON.stringify(payload));
+}
 
 async function okxRequest({ method = "GET", path, body }) {
   method = String(method).toUpperCase();
@@ -222,6 +236,11 @@ async function autoTrade(input) {
   if (LIVE && input.confirmLive !== true) throw new Error("confirmLive=true is required for live automation");
   const signal = String(input.signal || "HOLD").toUpperCase();
   const actionable = input.actionable === true || String(input.actionable).toLowerCase() === "true";
+  let decisionReason;
+  if (!input.signal || signal === "HOLD") decisionReason = "SIGNAL_MISSING_OR_HOLD";
+  else if (!actionable) decisionReason = "ACTIONABLE_FALSE_OR_MISSING";
+  else decisionReason = "PROCEEDING_TO_TRADE_LOGIC";
+  logAutoDecision(input, decisionReason);
   const position = await getBotPosition();
   const price = await getLastPrice();
 
@@ -245,7 +264,7 @@ async function autoTrade(input) {
   }
 
   if (!(actionable && signal === "BUY")) {
-    return { action: "WAIT_FOR_BUY", mode: LIVE ? "LIVE" : "DEMO", price, position };
+    return { action: "WAIT_FOR_BUY", reason: decisionReason, mode: LIVE ? "LIVE" : "DEMO", price, position };
   }
 
   const [{ minSz }, availableEur] = await Promise.all([
