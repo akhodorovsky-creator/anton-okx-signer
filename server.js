@@ -107,12 +107,59 @@ function deriveBotPosition(orders) {
   return { qty, entryPrice: qty > 0 ? cost / qty : 0 };
 }
 
-async function getBotPosition() {
+function botOrders(orders) {
+  const unique = new Map();
+  for (const order of orders) {
+    if (order && order.ordId) unique.set(order.ordId, order);
+  }
+  return [...unique.values()]
+    .filter(order => String(order.clOrdId || "").startsWith(ORDER_PREFIX))
+    .sort((a, b) => Number(a.cTime || 0) - Number(b.cTime || 0));
+}
+
+function deriveBotPnl(orders, lastPrice) {
+  let baseBalance = 0;
+  let quoteBalance = 0;
+  let filledOrders = 0;
+
+  for (const order of botOrders(orders)) {
+    const filled = Number(order.accFillSz || 0);
+    const price = Number(order.avgPx || order.fillPx || 0);
+    if (!(filled > 0) || !(price > 0)) continue;
+
+    if (order.side === "buy") {
+      baseBalance += filled;
+      quoteBalance -= filled * price;
+    } else if (order.side === "sell") {
+      baseBalance -= filled;
+      quoteBalance += filled * price;
+    } else {
+      continue;
+    }
+
+    const fee = Number(order.fee || 0);
+    if (Number.isFinite(fee) && fee !== 0) {
+      if (order.feeCcy === BASE_CCY) baseBalance += fee;
+      else if (order.feeCcy === "USDT") quoteBalance += fee;
+    }
+    filledOrders += 1;
+  }
+
+  if (Math.abs(baseBalance) < 0.00000001) baseBalance = 0;
+  const pnlUsdt = quoteBalance + baseBalance * lastPrice;
+  return { pnlUsdt, baseBalance, quoteBalance, filledOrders };
+}
+
+async function getBotOrders() {
   const q = "?instType=SPOT&instId=" + INST_ID + "&limit=100";
   const recent = await okxRequest({ path: "/api/v5/trade/orders-history" + q });
   let archive = { data: { data: [] } };
   try { archive = await okxRequest({ path: "/api/v5/trade/orders-history-archive" + q }); } catch {}
-  return deriveBotPosition([...(archive.data.data || []), ...(recent.data.data || [])]);
+  return [...(archive.data.data || []), ...(recent.data.data || [])];
+}
+
+async function getBotPosition() {
+  return deriveBotPosition(await getBotOrders());
 }
 
 async function getLastPrice() {
@@ -127,6 +174,24 @@ async function getAvailableBtc() {
   const details = result.data.data && result.data.data[0] && result.data.data[0].details;
   const row = Array.isArray(details) ? details.find(x => x.ccy === BASE_CCY) : null;
   return Number(row && row.availBal || 0);
+}
+
+async function getPnlSnapshot() {
+  const [orders, price] = await Promise.all([getBotOrders(), getLastPrice()]);
+  const position = deriveBotPosition(orders);
+  const pnl = deriveBotPnl(orders, price);
+  return {
+    mode: LIVE ? "LIVE" : "DEMO",
+    instrument: INST_ID,
+    pnlUsdt: Number(pnl.pnlUsdt.toFixed(4)),
+    price,
+    position: {
+      qty: pnl.baseBalance,
+      entryPrice: position.entryPrice
+    },
+    filledOrders: pnl.filledOrders,
+    updatedAt: new Date().toISOString()
+  };
 }
 
 async function autoTrade(input) {
@@ -171,11 +236,14 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && req.url === "/health") {
       return json(res, 200, { ok: true, live: LIVE, mode: LIVE ? "LIVE" : "DEMO", auto: true });
     }
-    if (req.method !== "POST" || !["/okx", "/auto"].includes(req.url)) {
-      return json(res, 404, { ok: false, error: "Not found" });
-    }
     if (!safeEqual(req.headers.authorization, "Bearer " + required("SIGNER_TOKEN"))) {
       return json(res, 401, { ok: false, error: "Unauthorized" });
+    }
+    if (req.method === "GET" && req.url === "/pnl") {
+      return json(res, 200, { ok: true, ...(await getPnlSnapshot()) });
+    }
+    if (req.method !== "POST" || !["/okx", "/auto"].includes(req.url)) {
+      return json(res, 404, { ok: false, error: "Not found" });
     }
     const input = await readBody(req);
     if (req.url === "/auto") {
