@@ -5,9 +5,10 @@ const crypto = require("node:crypto");
 const PORT = Number(process.env.PORT || 3000);
 const OKX_BASE_URL = process.env.OKX_BASE_URL || "https://eea.okx.com";
 const LIVE = String(process.env.LIVE || "false").toLowerCase() === "true";
-const INST_ID = "BTC-USDT";
+const INST_ID = "BTC-EUR";
 const BASE_CCY = "BTC";
-const ORDER_USDT = Math.min(Number(process.env.MAX_ORDER_USDT || 20), 5);
+const QUOTE_CCY = "EUR";
+const ORDER_EUR = Math.min(Number(process.env.MAX_ORDER_EUR || 20), 5);
 const TAKE_PROFIT = 0.05;
 const STOP_LOSS = 0.02;
 const ORDER_PREFIX = "ANTON";
@@ -140,14 +141,14 @@ function deriveBotPnl(orders, lastPrice) {
     const fee = Number(order.fee || 0);
     if (Number.isFinite(fee) && fee !== 0) {
       if (order.feeCcy === BASE_CCY) baseBalance += fee;
-      else if (order.feeCcy === "USDT") quoteBalance += fee;
+      else if (order.feeCcy === QUOTE_CCY) quoteBalance += fee;
     }
     filledOrders += 1;
   }
 
   if (Math.abs(baseBalance) < 0.00000001) baseBalance = 0;
-  const pnlUsdt = quoteBalance + baseBalance * lastPrice;
-  return { pnlUsdt, baseBalance, quoteBalance, filledOrders };
+  const pnlEur = quoteBalance + baseBalance * lastPrice;
+  return { pnlEur, baseBalance, quoteBalance, filledOrders };
 }
 
 async function getBotOrders() {
@@ -183,7 +184,7 @@ async function getPnlSnapshot() {
   return {
     mode: LIVE ? "LIVE" : "DEMO",
     instrument: INST_ID,
-    pnlUsdt: Number(pnl.pnlUsdt.toFixed(4)),
+    pnlEur: Number(pnl.pnlEur.toFixed(4)),
     price,
     position: {
       qty: pnl.baseBalance,
@@ -225,7 +226,7 @@ async function autoTrade(input) {
   }
   const body = {
     instId: INST_ID, tdMode: "cash", side: "buy", ordType: "market",
-    sz: String(ORDER_USDT), tgtCcy: "quote_ccy", clOrdId: orderId(), tag: ORDER_PREFIX
+    sz: String(ORDER_EUR), tgtCcy: "quote_ccy", clOrdId: orderId(), tag: ORDER_PREFIX
   };
   const order = await okxRequest({ method: "POST", path: "/api/v5/trade/order", body });
   return { action: "BUY", reason: "STRATEGY_BUY", mode: LIVE ? "LIVE" : "DEMO", price, position, order: order.data };
