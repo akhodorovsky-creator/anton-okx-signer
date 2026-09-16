@@ -57,6 +57,8 @@ function logAutoResult(result) {
   const payload = {
     action: result && result.action || null,
     reason: result && result.reason || null,
+    signal: result && result.signal || null,
+    actionable: result && typeof result.actionable === "boolean" ? result.actionable : null,
     mode: result && result.mode || (LIVE ? "LIVE" : "DEMO"),
     price: result && result.price || null,
     position: result && result.position || null,
@@ -245,7 +247,8 @@ async function autoTrade(input) {
   }
 
   if (!(actionable && signal === "BUY")) {
-    return { action: "WAIT_FOR_BUY", mode: LIVE ? "LIVE" : "DEMO", price, position };
+    const reason = !Object.prototype.hasOwnProperty.call(input, "signal") ? "MISSING_SIGNAL" : signal !== "BUY" ? "SIGNAL_NOT_BUY" : "SIGNAL_NOT_ACTIONABLE";
+    return { action: "WAIT_FOR_BUY", reason, signal, actionable, mode: LIVE ? "LIVE" : "DEMO", price, position };
   }
 
   const [{ minSz }, availableEur] = await Promise.all([
