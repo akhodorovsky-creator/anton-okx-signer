@@ -53,6 +53,16 @@ function isOrderPath(path) {
 function orderId() {
   return ORDER_PREFIX + Date.now().toString(36) + crypto.randomBytes(3).toString("hex");
 }
+function logAutoResult(result) {
+  const payload = {
+    action: result && result.action || null,
+    reason: result && result.reason || null,
+    mode: result && result.mode || (LIVE ? "LIVE" : "DEMO"),
+    price: result && result.price || null,
+    position: result && result.position || null
+  };
+  console.log("ANTON_AUTO_RESULT " + JSON.stringify(payload));
+}
 
 async function okxRequest({ method = "GET", path, body }) {
   method = String(method).toUpperCase();
@@ -249,6 +259,7 @@ const server = http.createServer(async (req, res) => {
     const input = await readBody(req);
     if (req.url === "/auto") {
       const result = await autoTrade(input);
+      logAutoResult(result);
       return json(res, 200, { ok: true, ...result });
     }
     if (LIVE && isOrderPath(input.path) && input.confirmLive !== true) {
@@ -257,6 +268,7 @@ const server = http.createServer(async (req, res) => {
     const result = await okxRequest(input);
     return json(res, result.httpStatus, { ok: true, mode: LIVE ? "LIVE" : "DEMO", ...result.data });
   } catch (error) {
+    console.error("ANTON_REQUEST_ERROR " + JSON.stringify({ path: req.url, error: error.message }));
     return json(res, 400, { ok: false, error: error.message });
   }
 });
