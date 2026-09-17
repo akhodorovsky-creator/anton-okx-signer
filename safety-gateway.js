@@ -12,6 +12,9 @@ const MAX_BODY_BYTES = 64 * 1024;
 const CAPITAL_CAP_EUR = 200;
 const MAX_ORDER_EUR = Math.min(20, Math.max(0, Number(process.env.MAX_ORDER_EUR || 20)));
 const MAX_SIGNAL_AGE_SECONDS = Math.max(60, Math.min(3600, Number(process.env.MAX_SIGNAL_AGE_SECONDS || 900)));
+const LIVE_AUTOMATION_ENABLED =
+  String(process.env.LIVE_ENABLED || "").toLowerCase() === "true" ||
+  String(process.env.LIVE || "").toLowerCase() === "true";
 let autoBusy = false;
 
 function respond(res, status, data) {
@@ -21,20 +24,28 @@ function respond(res, status, data) {
 }
 
 function currentSignal(input, now = Date.now()) {
-  const signal = String(input.signal || "HOLD").toUpperCase();
-  const age = Date.parse(input.signalTimestamp);
+  const nestedAuto = input && input.autoRequest && typeof input.autoRequest === "object" && !Array.isArray(input.autoRequest)
+    ? input.autoRequest
+    : null;
+  const normalized = nestedAuto ? { ...input, ...nestedAuto } : input;
+  const signal = String(normalized.signal || "HOLD").toUpperCase();
+  const requested = normalized.actionable === true || String(normalized.actionable || "").toLowerCase() === "true";
+  const signalTimestamp = normalized.signalTimestamp || normalized.timestamp || null;
+  const age = Date.parse(signalTimestamp);
   const fresh = Number.isFinite(age) && age <= now + 60_000 && age >= now - MAX_SIGNAL_AGE_SECONDS * 1000;
-  const quality = input.dataQuality && typeof input.dataQuality === "object" ? input.dataQuality : {};
-  const baseValid = input.confirmLive === true && input.actionable === true &&
-    input.policyRevision === "politics-v2" && quality.marketInputsFresh === true && fresh;
+  const quality = normalized.dataQuality && typeof normalized.dataQuality === "object" ? normalized.dataQuality : {};
+  const liveConfirmed = normalized.confirmLive === true || LIVE_AUTOMATION_ENABLED;
+  const baseValid = liveConfirmed && requested &&
+    normalized.policyRevision === "politics-v2" && quality.marketInputsFresh === true && fresh;
   const buyValid = baseValid && signal === "BUY" && quality.canOpenPosition === true;
   const sellValid = baseValid && signal === "SELL";
   // Returning HOLD still invokes the signer's server-side TP/SL checks on open positions.
   return {
-    ...input,
+    ...normalized,
     signal: buyValid || sellValid ? signal : "HOLD",
     actionable: buyValid || sellValid,
-    confirmLive: input.confirmLive === true
+    confirmLive: liveConfirmed,
+    signalTimestamp
   };
 }
 
@@ -124,7 +135,10 @@ const server = http.createServer(async (req, res) => {
         console.warn("ANTON_GATEWAY_BUY_BLOCKED: capital cap or unreadable position");
       }
     }
-    if (incoming.signal === "BUY" && safeInput.signal !== "BUY") {
+    const incomingSignal = String(
+      incoming?.autoRequest?.signal ?? incoming?.signal ?? "HOLD"
+    ).toUpperCase();
+    if (incomingSignal === "BUY" && safeInput.signal !== "BUY") {
       console.warn("ANTON_GATEWAY_BUY_BLOCKED: invalid or stale political/market evidence");
     }
     await forward(req, res, JSON.stringify(safeInput));
