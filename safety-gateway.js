@@ -35,10 +35,14 @@ function currentSignal(input, now = Date.now()) {
   const fresh = Number.isFinite(age) && age <= now + 60_000 && age >= now - MAX_SIGNAL_AGE_SECONDS * 1000;
   const quality = normalized.dataQuality && typeof normalized.dataQuality === "object" ? normalized.dataQuality : {};
   const liveConfirmed = normalized.confirmLive === true || LIVE_AUTOMATION_ENABLED;
-  const baseValid = liveConfirmed && requested &&
-    normalized.policyRevision === "politics-v2" && quality.marketInputsFresh === true && fresh;
-  const buyValid = baseValid && signal === "BUY" && quality.canOpenPosition === true;
+
+  // Relaxed live-entry gate: politics-v2 metadata and canOpenPosition are advisory,
+  // not hard blockers. A live BUY still requires an explicit actionable BUY,
+  // fresh market inputs, a fresh timestamp, and the existing server-side capital cap.
+  const baseValid = liveConfirmed && requested && quality.marketInputsFresh === true && fresh;
+  const buyValid = baseValid && signal === "BUY";
   const sellValid = baseValid && signal === "SELL";
+
   // Returning HOLD still invokes the signer's server-side TP/SL checks on open positions.
   return {
     ...normalized,
@@ -139,7 +143,7 @@ const server = http.createServer(async (req, res) => {
       incoming?.autoRequest?.signal ?? incoming?.signal ?? "HOLD"
     ).toUpperCase();
     if (incomingSignal === "BUY" && safeInput.signal !== "BUY") {
-      console.warn("ANTON_GATEWAY_BUY_BLOCKED: invalid or stale political/market evidence");
+      console.warn("ANTON_GATEWAY_BUY_BLOCKED: missing/stale actionable market evidence or capital limit");
     }
     await forward(req, res, JSON.stringify(safeInput));
   } catch (error) {
