@@ -9,7 +9,7 @@ const INST_ID = "BTC-EUR";
 const BASE_CCY = "BTC";
 const QUOTE_CCY = "EUR";
 const ORDER_EUR = Math.min(Math.max(Number(process.env.MAX_ORDER_EUR || 20), 0), 20);
-const TAKE_PROFIT = 0.05;
+const TAKE_PROFIT = 0.03;
 const STOP_LOSS = 0.02;
 const ORDER_PREFIX = "ANTON";
 
@@ -229,7 +229,7 @@ async function autoTrade(input) {
 
   if (position.qty > 0) {
     let reason = null;
-    if (price >= position.entryPrice * (1 + TAKE_PROFIT)) reason = "TAKE_PROFIT_5_PERCENT";
+    if (price >= position.entryPrice * (1 + TAKE_PROFIT)) reason = "TAKE_PROFIT_3_PERCENT";
     else if (price <= position.entryPrice * (1 - STOP_LOSS)) reason = "STOP_LOSS_2_PERCENT";
     else if (actionable && signal === "SELL") reason = "STRATEGY_SELL";
     if (!reason) return { action: "HOLD_POSITION", mode: LIVE ? "LIVE" : "DEMO", price, position };
