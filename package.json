@@ -1,13 +1,13 @@
 {
   "name": "anton-okx-signer",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "private": true,
-  "description": "Guarded OKX spot execution with independent market-only signals and authenticated dashboard",
-  "main": "dashboard-launcher.js",
+  "description": "Guarded OKX EUR spot bot with authenticated multi-pair dashboard and portfolio coordination",
+  "main": "multi-live.js",
   "scripts": {
-    "start": "npm run check && npm test && node dashboard-launcher.js",
-    "check": "node --check dashboard-launcher.js && node --check market-runner.js && node --check market-strategy.js && node --check risk-monitor.js && node --check safety-gateway.js && node --check server.js",
-    "test": "node --test dashboard-launcher.test.js risk-monitor.test.js market-strategy.test.js"
+    "start": "npm run check && npm test && node multi-live.js",
+    "check": "node --check multi-live.js && node --check dashboard-launcher.js && node --check market-runner.js && node --check market-strategy.js && node --check risk-monitor.js && node --check safety-gateway.js && node --check server.js",
+    "test": "node --test multi-live.test.js dashboard-launcher.test.js risk-monitor.test.js market-strategy.test.js"
   },
   "engines": {"node": ">=20"}
 }
