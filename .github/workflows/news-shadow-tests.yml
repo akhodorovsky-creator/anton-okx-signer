@@ -1,0 +1,20 @@
+name: News intelligence shadow tests
+on:
+  push:
+    branches: [feature/news-intelligence-shadow]
+  workflow_dispatch:
+jobs:
+  shadow-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax and isolated news tests
+        run: |
+          node --check news-intelligence.js
+          node --check news-intelligence.test.js
+          node --test news-intelligence.test.js
