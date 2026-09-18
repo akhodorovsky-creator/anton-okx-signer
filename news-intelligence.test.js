@@ -1,0 +1,15 @@
+"use strict";
+const test=require('node:test');
+const assert=require('node:assert/strict');
+const {inspectEvent}=require('./news-intelligence');
+const now=Date.UTC(2026,8,18,12,0,0);
+const event={actor:'musk',id:'post_123456',sourceUrl:'https://x.com/elonmusk/status/123456',publishedAt:new Date(now-120000).toISOString(),originalVerified:true};
+const market={priceBefore:100,priceAfter:100.5,volumeRatio:1.6,oiChangePct:0.5,fundingRate:0.0001,observedAt:new Date(now-60000).toISOString()};
+test('verified fresh post and market observation are research-only, never actionable',()=>{const r=inspectEvent(event,market,new Set(),now);assert.equal(r.status,'OBSERVED_CORRELATION');assert.equal(r.mode,'SHADOW_ONLY');assert.equal(r.actionable,false);assert.equal(r.tradeSignal,null)});
+test('unverified screenshot or repost does not count',()=>{const r=inspectEvent({...event,originalVerified:false},market,new Set(),now);assert.equal(r.status,'REJECTED');assert.deepEqual(r.reasons,['ORIGINAL_NOT_VERIFIED'])});
+test('duplicate ID rejected',()=>{const r=inspectEvent(event,market,new Set(['musk:post_123456']),now);assert.deepEqual(r.reasons,['DUPLICATE_EVENT'])});
+test('stale news rejected',()=>{const r=inspectEvent({...event,publishedAt:new Date(now-3600000).toISOString()},market,new Set(),now);assert.deepEqual(r.reasons,['STALE_OR_INVALID_PUBLICATION_TIME'])});
+test('untrusted domain rejected',()=>{const r=inspectEvent({...event,sourceUrl:'https://x.com.evil.example/elonmusk/status/123456'},market,new Set(),now);assert.deepEqual(r.reasons,['UNTRUSTED_SOURCE_DOMAIN'])});
+test('market lacking independent confirmation is not correlated',()=>{const r=inspectEvent(event,{...market,volumeRatio:1},new Set(),now);assert.equal(r.status,'INSUFFICIENT_CONFIRMATION');assert.equal(r.actionable,false)});
+test('missing or stale prices fail closed',()=>{for(const invalid of [{...market,priceAfter:null},{...market,observedAt:new Date(now-3600000).toISOString()}]){const r=inspectEvent(event,invalid,new Set(),now);assert.deepEqual(r.reasons,['MISSING_OR_STALE_MARKET_CONFIRMATION'])}});
+test('Trump can use documented official domain but requires verification',()=>{const r=inspectEvent({...event,actor:'trump',sourceUrl:'https://www.whitehouse.gov/briefings-statements/sample'},market,new Set(),now);assert.equal(r.status,'OBSERVED_CORRELATION');assert.equal(r.actionable,false)});
