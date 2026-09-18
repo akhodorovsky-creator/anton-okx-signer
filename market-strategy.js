@@ -13,8 +13,17 @@ function candles(data,now){
   if(last.ts>now+60_000||now-(last.ts+INTERVAL)>15*60_000)throw new Error('STALE_CANDLES');
   return list;
 }
+// Preserve original strong signals at +/-0.9. Add a confirmed breakout path at +/-0.75
+// only when trend, 5-minute momentum, and volume ALL agree; no flat-trend trading.
+function chooseSignal({score,technical,ema20,ema50,ret5,volRatio}){
+  const confirmedBuy=score>=0.75&&technical>=0.75&&ema20>ema50&&ret5>0.2&&volRatio>1.4;
+  const confirmedSell=score<=-0.75&&technical<=-0.75&&ema20<ema50&&ret5< -0.2&&volRatio>1.4;
+  if(score>=0.9||confirmedBuy)return 'BUY';
+  if(score<=-0.9||confirmedSell)return 'SELL';
+  return 'HOLD';
+}
 function compute(market,state={},now=Date.now()){
-  const out={signal:'HOLD',actionable:false,score:null,reasons:[],marketInputsFresh:false,instrument:'BTC-EUR',strategy:'market-only-v1',timestamp:new Date(now).toISOString()};
+  const out={signal:'HOLD',actionable:false,score:null,reasons:[],marketInputsFresh:false,instrument:'BTC-EUR',strategy:'market-only-v1.1',timestamp:new Date(now).toISOString()};
   let btc,eth;
   try{btc=candles(market.btc,now);eth=candles(market.eth,now);}catch(e){out.reasons.push(e.message);return out;}
   const oi=number(market.oi?.data?.[0]?.oiUsd??market.oi?.data?.[0]?.oi);
@@ -44,11 +53,10 @@ function compute(market,state={},now=Date.now()){
   if(funding< -0.0005)flow+=0.35;
   flow=clamp(flow,-1.2,1.2);
   const score=technical+flow;
-  let signal='HOLD';
-  if(score>=0.9)signal='BUY';else if(score<=-0.9)signal='SELL';
+  const signal=chooseSignal({score,technical,ema20,ema50,ret5,volRatio});
   const elapsed=now-number(state.lastSignalAt);
   const cooldown=signal!=='HOLD'&&state.lastSignal===signal&&Number.isFinite(elapsed)&&elapsed>=0&&elapsed<30*60_000;
-  Object.assign(out,{signal,actionable:signal!=='HOLD'&&!cooldown,score:Number(score.toFixed(3)),price,technical:Number(technical.toFixed(3)),flow:Number(flow.toFixed(3)),oiChange:Number(oiChange.toFixed(3)),rsi14:Number(rsi14.toFixed(2)),btcCandleAt:new Date(btc.at(-1).ts).toISOString(),ethCandleAt:new Date(eth.at(-1).ts).toISOString()});
+  Object.assign(out,{signal,actionable:signal!=='HOLD'&&!cooldown,score:Number(score.toFixed(3)),price,technical:Number(technical.toFixed(3)),flow:Number(flow.toFixed(3)),oiChange:Number(oiChange.toFixed(3)),rsi14:Number(rsi14.toFixed(2)),btcCandleAt:new Date(btc.at(-1).ts).toISOString(),ethCandleAt:new Date(eth.at(-1).ts).toISOString(),ret5:Number(ret5.toFixed(3)),volRatio:Number(volRatio.toFixed(3))});
   out.reasons.push(cooldown?'COOLDOWN':'MARKET_ONLY');return out;
 }
-module.exports={candles,compute};
+module.exports={candles,compute,chooseSignal};
