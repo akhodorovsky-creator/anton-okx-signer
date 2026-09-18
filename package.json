@@ -1,15 +1,13 @@
 {
   "name": "anton-okx-signer",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "private": true,
-  "description": "Guarded OKX spot execution and independent position monitoring for ANTON Signal",
-  "main": "risk-monitor.js",
+  "description": "Guarded OKX spot execution with independent market-only signals and existing position monitoring",
+  "main": "market-runner.js",
   "scripts": {
-    "start": "node risk-monitor.js",
-    "check": "node --check risk-monitor.js && node --check safety-gateway.js && node --check server.js",
-    "test": "node --test risk-monitor.test.js"
+    "start": "npm run check && npm test && node market-runner.js",
+    "check": "node --check market-runner.js && node --check market-strategy.js && node --check risk-monitor.js && node --check safety-gateway.js && node --check server.js",
+    "test": "node --test risk-monitor.test.js market-strategy.test.js"
   },
-  "engines": {
-    "node": ">=20"
-  }
+  "engines": {"node": ">=20"}
 }
