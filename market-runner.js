@@ -7,7 +7,8 @@ const path=require('node:path');
 const {compute}=require('./market-strategy');
 const PORT=Number(process.env.PORT||3000),GATEWAY_PORT=PORT+2,SIGNER_PORT=PORT+3;
 const LIVE=String(process.env.MARKET_ONLY_LIVE||'').toLowerCase()==='true';
-const INTERVAL=15*60_000;
+// Railway polling is independent of n8n's 15-minute execution quota.
+const INTERVAL=5*60_000;
 const state={lastOi:null,lastSignal:null,lastSignalAt:null};
 const OKX_BASE='https://eea.okx.com';
 let busy=false,stopped=false;
