@@ -1,11 +1,11 @@
 {
   "name": "anton-okx-signer",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "private": true,
-  "description": "Guarded OKX EUR spot bot with authenticated multi-pair dashboard and portfolio coordination",
-  "main": "multi-live.js",
+  "description": "Guarded OKX EUR spot bot with authenticated dashboard and exchange-minimum-compliant BTC execution",
+  "main": "market-runner.js",
   "scripts": {
-    "start": "npm run check && npm test && sh -c 'node preflight.js & exec node multi-live.js'",
+    "start": "npm run check && npm test && sh -c 'node preflight.js & exec node market-runner.js'",
     "check": "node --check preflight.js && node --check multi-live.js && node --check dashboard-launcher.js && node --check market-runner.js && node --check market-strategy.js && node --check risk-monitor.js && node --check safety-gateway.js && node --check server.js",
     "test": "node --test multi-live.test.js dashboard-launcher.test.js risk-monitor.test.js market-strategy.test.js"
   },
