@@ -1,0 +1,10 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {test}=require('node:test');
+const {simulate,loadPair}=require('./kraken-spot');
+const book=(ask,bid,size=1000)=>({asks:[[String(ask),String(size),1]],bids:[[String(bid),String(size),1]]});
+const books={XBTEUR:book(100,99),ETHEUR:book(10,9.9),ETHXBT:book(0.09,0.089)};
+test('fees are charged on every leg and real orders are never allowed',()=>{const r=simulate(books);assert.equal(r.ordersEnabled,false);assert.equal(r.routes.length,2);assert.equal(r.routes[0].executableTrade,false);assert.equal(r.takerFeeAssumption,0.008);});
+test('100 EUR budget is strict',()=>{assert.throws(()=>simulate(books,101),/budget/);assert.throws(()=>simulate(books,-1),/budget/);});
+test('insufficient top-level book depth blocks review candidate',()=>{const r=simulate({...books,ETHXBT:book(0.09,0.089,0.00001)});assert.equal(r.routes[0].topLevelDepthSufficient,false);assert.equal(r.routes[0].candidateForFurtherReview,false);});
+test('invalid Kraken API payload fails closed',async()=>{await assert.rejects(loadPair('XBTEUR',async()=>({ok:true,json:async()=>({error:['EQuery:Unknown asset pair'],result:{}})})),/invalid/);});
