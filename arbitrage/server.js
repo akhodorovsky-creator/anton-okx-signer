@@ -4,9 +4,11 @@ const {evaluate}=require('./scanner');
 const {scan:polyScan}=require('./live-feed');
 const {scan:krakenScan}=require('./kraken-spot');
 const {scan:costScan}=require('./cost-model');
+const {scan:altScan}=require('./alt-assets');
 const alternatives=require('./alternative-strategies');
 const legacyDashboard=require('./dashboard');
 const feeDashboard=require('./fee-dashboard');
+const altDashboard=require('./alt-dashboard');
 const port=Number(process.env.PORT||3000);
 if(!Number.isInteger(port)||port<1||port>65535)throw Error('Invalid PORT');
 const send=(res,status,data)=>{res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'});res.end(JSON.stringify(data));};
@@ -26,12 +28,14 @@ async function cached(key,fn){
  if(!flights.has(key))flights.set(key,fn().then(data=>{cache.set(key,{time:Date.now(),data});if(key==='kraken')recordKraken(data);return data;}).finally(()=>flights.delete(key)));
  return flights.get(key);
 }
-async function backgroundScan(){try{const data=await cached('cost',costScan);console.log('FEE_FIRST_PAPER_SCAN '+JSON.stringify({fetchedAt:data.fetchedAt,spreadPct:data.spreadPct,ordersEnabled:false}));}catch(e){console.error('FEE_FIRST_PAPER_ERROR '+String(e.message).slice(0,140));}}
+async function backgroundScan(){try{const data=await cached('alt',altScan);console.log('ALT_ASSETS_PAPER_SCAN '+JSON.stringify({fetchedAt:data.fetchedAt,markets:data.markets.map(x=>({symbol:x.symbol,signal:x.signal,error:x.error||null})),ordersEnabled:false}));}catch(e){console.error('ALT_ASSETS_PAPER_ERROR '+String(e.message).slice(0,140));}}
 const html=(res,body)=>{res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff','content-security-policy':"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'"});res.end(body);};
 const server=http.createServer((req,res)=>{
- if(req.method==='GET'&&req.url==='/health')return send(res,200,{status:'ok',mode:'PAPER',strategy:'fee-first-observer',tradesEnabled:false,hardBudgetEUR:100,feeScanReceived:cache.has('cost'),feeDataTimestamp:cache.get('cost')?.data.fetchedAt||null,legacyKrakenFeedReceived:cache.has('kraken')});
- if(req.method==='GET'&&(req.url==='/'||req.url==='/dashboard'))return html(res,feeDashboard);
+ if(req.method==='GET'&&req.url==='/health')return send(res,200,{status:'ok',mode:'PAPER',strategy:'independent-alt-assets-v1',tradesEnabled:false,hardBudgetEUR:100,altFeedReceived:cache.has('alt'),altDataTimestamp:cache.get('alt')?.data.fetchedAt||null,legacyKrakenFeedReceived:cache.has('kraken')});
+ if(req.method==='GET'&&(req.url==='/'||req.url==='/dashboard'))return html(res,altDashboard);
+ if(req.method==='GET'&&req.url==='/fee-dashboard')return html(res,feeDashboard);
  if(req.method==='GET'&&req.url==='/legacy')return html(res,legacyDashboard);
+ if(req.method==='GET'&&req.url==='/alt-assets'){cached('alt',altScan).then(d=>send(res,200,d)).catch(e=>send(res,503,{mode:'PAPER',error:String(e.message).slice(0,140),tradesEnabled:false}));return;}
  if(req.method==='GET'&&req.url==='/alternatives')return send(res,200,alternatives.options());
  if(req.method==='GET'&&req.url==='/cost-model'){cached('cost',costScan).then(d=>send(res,200,d)).catch(e=>send(res,503,{mode:'PAPER',error:String(e.message).slice(0,140),tradesEnabled:false}));return;}
  if(req.method==='GET'&&req.url==='/history')return send(res,200,{mode:'PAPER',strategy:'legacy-triangular-archive',tradesEnabled:false,realizedPnLAvailable:false,accountBalanceAvailable:false,persistent:false,startedAt,totalScans,candidateCount,latest:cache.get('kraken')?.data||null,records:history});
@@ -46,7 +50,7 @@ const server=http.createServer((req,res)=>{
  req.on('end',()=>{if(tooLarge)return;try{send(res,200,{userSuppliedData:true,verified:false,result:evaluate(JSON.parse(body))});}catch(e){send(res,400,{mode:'PAPER',error:e.message});}});
 });
 if(require.main===module)server.listen(port,'0.0.0.0',()=>{
- console.log('ANTON FEE FIRST PAPER on '+port+'; orders disabled; background='+(process.env.PAPER_AUTOSCAN==='true'));
+ console.log('ANTON ALT SIGNAL PAPER on '+port+'; orders disabled; background='+(process.env.PAPER_AUTOSCAN==='true'));
  if(process.env.PAPER_AUTOSCAN==='true'){backgroundScan();const timer=setInterval(backgroundScan,15*60*1000);timer.unref();}
 });
 module.exports=server;
