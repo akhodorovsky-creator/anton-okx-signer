@@ -1,13 +1,13 @@
 {
   "name": "anton-arbitrage-paper",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
-  "description": "Separated read-only Polymarket reference and Kraken spot paper scanner; NO TRADING",
+  "description": "Independent Kraken alt-assets PAPER scanner; NO REAL TRADING",
   "main": "arbitrage/server.js",
   "scripts": {
     "start": "npm run check && npm test && node arbitrage/server.js",
-    "check": "node --check arbitrage/scanner.js && node --check arbitrage/live-feed.js && node --check arbitrage/kraken-spot.js && node --check arbitrage/readiness.js && node --check arbitrage/server.js && node --check arbitrage/live-feed.test.js && node --check arbitrage/kraken-spot.test.js && node --check arbitrage/readiness.test.js",
-    "test": "node --test arbitrage/scanner.test.js arbitrage/live-feed.test.js arbitrage/kraken-spot.test.js arbitrage/readiness.test.js"
+    "check": "node --check arbitrage/scanner.js && node --check arbitrage/live-feed.js && node --check arbitrage/kraken-spot.js && node --check arbitrage/readiness.js && node --check arbitrage/alt-assets.js && node --check arbitrage/alt-dashboard.js && node --check arbitrage/server.js && node --check arbitrage/alt-assets.test.js",
+    "test": "node --test arbitrage/scanner.test.js arbitrage/live-feed.test.js arbitrage/kraken-spot.test.js arbitrage/readiness.test.js arbitrage/alt-assets.test.js"
   },
   "engines": {"node": ">=20"}
 }
