@@ -5,7 +5,7 @@ const PAIRS=Object.freeze([{symbol:'SOL',pair:'SOLEUR'},{symbol:'ADA',pair:'ADAE
 const FEE=Object.freeze({maker:0.004,taker:0.008}); // illustrative, not the user's verified fee
 const RESERVE=0.002, BUDGET=100, MAX_PER_PAIR=20;
 function ema(v,p){let n=v[0],k=2/(p+1);for(let i=1;i<v.length;i++)n=v[i]*k+n*(1-k);return n;}
-function rsi(v){let gains=0,loss=0;for(let i=v.length-14;i<v.length;i++){const x=v[i]-v[i-1];if(x>=0)gains+=x;else losses-=x;}return loss===0?100:100-100/(1+gains/loss);}
+function rsi(v){let gains=0,loss=0;for(let i=v.length-14;i<v.length;i++){const x=v[i]-v[i-1];if(x>=0)gains+=x;else loss-=x;}return loss===0?100:100-100/(1+gains/loss);}
 async function getPublic(path,get=fetch){const r=await get('https://api.kraken.com/0/public/'+path,{headers:{accept:'application/json'},signal:AbortSignal.timeout(8000)});if(!r.ok)throw Error('KRAKEN_HTTP_'+r.status);const j=await r.json();if(!Array.isArray(j.error)||j.error.length||!j.result)throw Error('KRAKEN_API_ERROR');return j.result;}
 function single(result){const entries=Object.entries(result).filter(([k])=>k!=='last');if(entries.length!==1)throw Error('AMBIGUOUS_PAIR');return entries[0][1];}
 function analyse({symbol,pair},ohlc,book,meta,now=Date.now()){
