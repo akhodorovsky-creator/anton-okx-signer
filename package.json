@@ -5,7 +5,7 @@
   "description": "Isolated paper-only arbitrage evaluator; no exchange trading",
   "main": "arbitrage/server.js",
   "scripts": {
-    "start": "node arbitrage/server.js",
+    "start": "npm run check && npm test && node arbitrage/server.js",
     "check": "node --check arbitrage/scanner.js && node --check arbitrage/server.js",
     "test": "node --test arbitrage/scanner.test.js"
   },
