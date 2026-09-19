@@ -1,7 +1,11 @@
 "use strict";
 // Independent read-only news observer. NEVER imports order execution or emits BUY/SELL.
 const crypto = require('node:crypto');
-const FEED = 'https://news.google.com/rss/search?q=' + encodeURIComponent('(Trump OR "Elon Musk") (bitcoin OR crypto OR tariffs OR sanctions OR Iran) when:1h') + '&hl=en-US&gl=US&ceid=US:en';
+const QUERY='(Trump OR "Elon Musk") (bitcoin OR crypto OR tariffs OR sanctions OR Iran)';
+const FEEDS = [
+  'https://news.google.com/rss/search?q=' + encodeURIComponent(QUERY+' when:1h') + '&hl=en-US&gl=US&ceid=US:en',
+  'https://www.bing.com/news/search?q=' + encodeURIComponent(QUERY) + '&format=rss'
+];
 const INTERVAL = 15 * 60_000;
 const seen = new Set();
 function decode(s) { return s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;|&apos;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim(); }
@@ -21,10 +25,16 @@ function extract(xml, now=Date.now()) {
   }).filter(Boolean);
 }
 async function readFeed(fetchFn=fetch, now=Date.now()) {
-  const result=await fetchFn(FEED,{signal:AbortSignal.timeout(12000),headers:{'user-agent':'ANTON-Research-Observer/1.0'}});
-  if (!result.ok) throw Error('NEWS_HTTP_'+result.status);
-  const xml=await result.text();
-  return extract(xml,now);
+  const failures=[];
+  for(const url of FEEDS){
+    try{
+      const result=await fetchFn(url,{signal:AbortSignal.timeout(12000),headers:{'user-agent':'ANTON-Research-Observer/1.0'}});
+      if(!result.ok)throw Error('NEWS_HTTP_'+result.status);
+      const xml=await result.text();
+      return extract(xml,now);
+    }catch(e){failures.push(String(e.message).slice(0,40));}
+  }
+  throw Error('NEWS_SOURCES_UNAVAILABLE_'+failures.join('_'));
 }
 async function tick(fetchFn=fetch, log=console.log, now=Date.now()) {
   try {
