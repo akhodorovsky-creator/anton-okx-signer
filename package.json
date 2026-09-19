@@ -1,13 +1,13 @@
 {
-  "name": "anton-okx-signer",
-  "version": "1.2.2",
+  "name": "anton-arbitrage-paper",
+  "version": "0.1.0",
   "private": true,
-  "description": "Guarded OKX EUR spot bot with authenticated multi-pair dashboard and 20 EUR per-order cap",
-  "main": "multi-live.js",
+  "description": "Isolated paper-only arbitrage evaluator; no exchange trading",
+  "main": "arbitrage/server.js",
   "scripts": {
-    "start": "npm run check && npm test && node eur-order-cap-launcher.js --verify && sh -c 'node political-shadow.js & node preflight.js & exec node eur-order-cap-launcher.js'",
-    "check": "node --check political-shadow.js && node --check political-shadow.test.js && node --check preflight.js && node --check multi-live.js && node --check eur-order-cap-launcher.js && node --check dashboard-launcher.js && node --check market-runner.js && node --check market-strategy.js && node --check risk-monitor.js && node --check safety-gateway.js && node --check server.js",
-    "test": "node --test political-shadow.test.js multi-live.test.js dashboard-launcher.test.js risk-monitor.test.js market-strategy.test.js"
+    "start": "node arbitrage/server.js",
+    "check": "node --check arbitrage/scanner.js && node --check arbitrage/server.js",
+    "test": "node --test arbitrage/scanner.test.js"
   },
   "engines": {"node": ">=20"}
 }
