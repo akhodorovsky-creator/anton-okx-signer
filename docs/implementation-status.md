@@ -1,0 +1,1 @@
+Multi-live patch is isolated in branch; old risk monitor disabled in multi mode; 20 EUR cap preserved. Pending live exchange verification and merge.
