@@ -1,0 +1,1 @@
+Check source patch applicability, old monitor read-only mode, blocked-exit log, and CI before any merge.
