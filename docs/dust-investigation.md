@@ -1,0 +1,3 @@
+# ETH-EUR blocked exits
+
+`BELOW_MIN_OR_UNAVAILABLE` is a safety condition, not necessarily a software exception. The coordinator refuses a market sell if position quantity or available quantity rounded downward to lotSz falls below minSz. A trade above the minimum is not necessarily the right remediation: never buy additional ETH merely to clear dust. Check available/free balance, hold restrictions, instrument state, minSz, lotSz, and pending exchange orders. If an order might have been sent but acknowledgement failed, reconcile exchange order history first; never blindly retry. Continue only after confirming position and fees from complete exchange records.
