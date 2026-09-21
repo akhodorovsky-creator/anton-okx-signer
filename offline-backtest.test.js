@@ -55,12 +55,12 @@ test('stop is evaluated on scheduled close and filled at next open', () => {
   assert.equal(result.trades[0].exitTime,new Date(BASE+66*300000).toISOString());
   assert.ok(result.trades[0].pnlEur < 0);
 });
-test('first execution cannot depend on candles appearing later', () => {
-  const a = replay(parseCsv(csv(80)),{signalFn:buy});
-  const b = replay(parseCsv(csv(80,i => i>=70 ? 200 : 100)),{signalFn:buy});
-  assert.equal(a.entries >= 1,true);
-  assert.equal(a.entries,b.entries);
-  assert.equal(a.openPosition,b.openPosition);
+test('later price candles do not enter an earlier signal snapshot', () => {
+  let firstA,firstB;
+  replay(parseCsv(csv(80)),{signalFn:(market) => {firstA ??= JSON.stringify(market); return buy();}});
+  replay(parseCsv(csv(80,i => i>=70 ? 200 : 100)),{signalFn:(market) => {firstB ??= JSON.stringify(market); return buy();}});
+  assert.ok(firstA);
+  assert.equal(firstA,firstB);
 });
 test('rejects incorrect risk and friction assumptions', () => {
   const bars = parseCsv(csv());
