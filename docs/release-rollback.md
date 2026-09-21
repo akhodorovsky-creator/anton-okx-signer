@@ -1,0 +1,1 @@
+Rollback baseline: e55339fdc4b87f5f26da91f25feefec23280985e (backup/2026-09-21-before-audit-fixes). A rollback restores the prior conflict between legacy and multi-pair exits, so treat rollback as emergency recovery, not permanent closure. Compare exchange orders and positions before replaying any attempt.
