@@ -1,0 +1,1 @@
+Before merge, verify CI pass and source string guard against main. Do not merge automatically if test results are missing.
