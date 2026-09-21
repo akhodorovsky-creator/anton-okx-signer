@@ -1,0 +1,1 @@
+Merge only if full Node tests pass and source patch verifies against actual repository source. Then check Railway health and read-only trade history. Dust remains unresolved.
