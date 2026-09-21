@@ -1,0 +1,1 @@
+Pending integration checks: run the complete existing test suite in repository, verify the source patch against the exact deployed branch, inspect full Railway logs and compare OKX order history. Do not claim complete resolution or deploy without checks.
