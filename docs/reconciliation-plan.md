@@ -1,0 +1,1 @@
+Reconciliation requires complete exchange trade records and fee data. Snapshot estimates are not audited. Avoid unapproved production changes.
