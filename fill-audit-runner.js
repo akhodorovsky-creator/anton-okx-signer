@@ -45,7 +45,11 @@ function run() {
     if (busy||stopped) return;
     busy=true;
     try { await runOnce(); }
-    catch(error) {console.error("ANTON_FILL_AUDIT_UNVERIFIED "+String(error.message).slice(0,160));}
+    catch(error) {
+      // Some reconciliation failures carry an order ID. Never put it in deploy logs.
+      const reason=String(error.message||"AUDIT_FAILED").replace(/\b\d{5,}\b/g,"[REDACTED]").slice(0,160);
+      console.error("ANTON_FILL_AUDIT_UNVERIFIED "+reason);
+    }
     finally {busy=false;}
   }
   const initial=setTimeout(tick,START_DELAY);
