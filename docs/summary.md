@@ -1,0 +1,1 @@
+Fixes isolated in candidate branch: prevent multi/legacy double trading, maintain 20 EUR order cap, improve blocked exit diagnostics, add regression checks. Pending: full repository CI, deployment, OKX dust resolution, durable historical P&L.
