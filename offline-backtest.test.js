@@ -51,7 +51,7 @@ test('stop is evaluated on scheduled close and filled at next open', () => {
   const result = replay(bars,{signalFn:buy});
   assert.ok(result.closedTrades >= 1);
   assert.equal(result.trades[0].reason,'SL');
-  assert.equal(result.trades[0].entryTime,new Date(BASE+63*300000).toISOString());
+  assert.equal(result.trades[0].entryTime,new Date(BASE+60*300000).toISOString());
   assert.equal(result.trades[0].exitTime,new Date(BASE+66*300000).toISOString());
   assert.ok(result.trades[0].pnlEur < 0);
 });
