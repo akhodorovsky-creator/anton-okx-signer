@@ -1,0 +1,1 @@
+Open items: full suite/CI verification; production deployment approval and smoke check; ETH sellability manual verification; durable accounting. No claim of full repair.
