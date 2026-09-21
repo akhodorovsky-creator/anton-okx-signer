@@ -1,0 +1,1 @@
+Candidate fix branch only, no production rollout. Tests need full-repo verification. ETH min-size blocker remains unresolved.
