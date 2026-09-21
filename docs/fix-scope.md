@@ -1,0 +1,1 @@
+The current candidate does not solve exchange-imposed unsellable dust or fully reconcile order history. It prevents conflicting BTC exit controllers when multi spot is enabled and improves logging.
