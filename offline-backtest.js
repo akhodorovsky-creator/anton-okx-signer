@@ -13,6 +13,7 @@ function parseCsv(text) {
   if (typeof text !== 'string') throw Error('CSV_REQUIRED');
   const lines = text.trim().split(/\r?\n/);
   if (lines.shift() !== HEADER) throw Error('CSV_HEADER_MISMATCH');
+  let previous = null;
   const bars = lines.map((line, i) => {
     const cells = line.split(',');
     if (cells.length !== 10) throw Error('CSV_COLUMNS_' + (i + 2));
@@ -20,7 +21,8 @@ function parseCsv(text) {
     if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{3})?Z$/.test(cells[0]) || !Number.isFinite(timestamp)) throw Error('INVALID_TIME_' + (i + 2));
     const [open,high,low,close,volume,ethClose,ethVolume,oi,funding] = cells.slice(1).map((x,j) => finite(x, ['OPEN','HIGH','LOW','CLOSE','VOLUME','ETH_CLOSE','ETH_VOLUME','OI','FUNDING'][j]));
     if (!(low > 0 && open >= low && close >= low && high >= open && high >= close && high >= low && volume >= 0 && ethClose > 0 && ethVolume >= 0 && oi > 0)) throw Error('INVALID_BAR_' + (i + 2));
-    if (i && timestamp - bars[i-1].timestamp !== BAR_MS) throw Error('MISSING_OR_DUPLICATE_BAR_' + (i + 2));
+    if (previous !== null && timestamp - previous !== BAR_MS) throw Error('MISSING_OR_DUPLICATE_BAR_' + (i + 2));
+    previous = timestamp;
     return {timestamp,open,high,low,close,volume,ethClose,ethVolume,oi,funding};
   });
   if (bars.length < 64) throw Error('INSUFFICIENT_HISTORY');
