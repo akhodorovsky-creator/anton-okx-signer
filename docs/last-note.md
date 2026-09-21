@@ -1,0 +1,1 @@
+Open: missing full CI confirmation, production rollout, and exchange minimum-size dust. The code changes remain unmerged in fix branch.
