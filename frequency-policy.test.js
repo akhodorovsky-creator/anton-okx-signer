@@ -41,6 +41,24 @@ test('only reconciled sub-lot residue permits an opt-in new entry', () => {
   assert.equal(entryBlock({...p, qty: 0.01, free: 0.01}, true), 'POSITION_ALREADY_OPEN');
   assert.equal(entryBlock({...p, qty: NaN}, true), 'POSITION_UNVERIFIED');
 });
+test('live BTC ETH DOGE sub-lot rounding drift reconciles only with dust option enabled', () => {
+  const residues = [
+    {qty: 5.779999999997766e-9, free: 5.78e-9, instrument: {minSz: '0.0001', lotSz: '0.00000001'}},
+    {qty: 8.349999999993779e-7, free: 8.35e-7, instrument: {minSz: '0.001', lotSz: '0.000001'}},
+    {qty: 1.4000022474647267e-8, free: 1.4e-8, instrument: {minSz: '10', lotSz: '0.000001'}}
+  ];
+  for (const p of residues) {
+    assert.equal(entryBlock(p), 'DUST_REENTRY_DISABLED');
+    assert.equal(entryBlock(p, true), null);
+  }
+});
+test('dust tolerance cannot conceal missing, extra, microscopic or tradeable inventory', () => {
+  const p = {qty: 1.4000022474647267e-8, free: 1.4e-8, instrument: {minSz: '10', lotSz: '0.000001'}};
+  for (const free of [0, p.free * .99, p.free * 1.01, 2])
+    assert.equal(entryBlock({...p, free}, true), 'DUST_BALANCE_MISMATCH');
+  assert.equal(entryBlock({...p, qty: 0.000001}, true), 'POSITION_ALREADY_OPEN');
+  assert.equal(entryBlock({qty: 1e-17, free: 1e-15, instrument: p.instrument}, true), 'DUST_BALANCE_MISMATCH');
+});
 test('faster observations retain a fifteen-minute OI comparison', () => {
   const state = {}, start = 1800000000000;
   for (let i = 0; i < 3; i++) assert.equal(observeOi(state, {oi: 1000 + i, ts: start + i * 5 * MINUTE}, start + i * 5 * MINUTE).ready, false);
