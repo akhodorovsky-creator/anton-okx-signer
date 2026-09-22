@@ -9,7 +9,10 @@ const baseline=[
 "async function tick(){if(MAX_ORDER>5)throw Error('limit');}",
 "function run(){if(MAX_ORDER>5)throw Error('limit');}",
 "function handler(req,res){const route=(req.url||'').split('?')[0];}",
+"const {signalPeriod,dustEnabled,observeOi,entryBlock}=require('./frequency-policy');",
+"let busy=false,uncertain=false,cache=null;",
 "function exits(){for(const p of [{pair:'ETH-EUR',qty:1,free:0,instrument:{minSz:1,lotSz:1}}]){console.error('ANTON_MULTI_EXIT_BLOCKED '+p.pair+' BELOW_MIN_OR_UNAVAILABLE');continue;}}",
+"function page(){return \"p.qty>0?'В позиции': instrumentLive:p.instrument.state==='live'}))\";}",
 'const CAP_EUR=200, TP=.05, SL=.02, PERIOD=15*60_000;',
 "const PAIRS=Object.freeze(['BTC-EUR','ETH-EUR','DOGE-EUR']);",
 "function signal(d,book){for(const x of [1]){if(!d.actionable||d.signal!=='BUY')continue;",
@@ -22,6 +25,10 @@ test('runtime patch raises max order consistently and disables legacy /auto',()=
   assert.match(result,/requested>20/);
   assert.match(result,/MULTI_COORDINATOR_OWNS_ALL_TRADING/);
   assert.match(result,/ANTON_MULTI_EXIT_BLOCKED.*JSON\.stringify/);
+  assert.match(result,/ANTON_MULTI_DUST/);
+  assert.match(result,/reportedDust\.has/);
+  assert.match(result,/p\.dust\?'Технический остаток'/);
+  assert.match(result,/isReconciledDust\(p\)/);
   assert.doesNotMatch(result,/MAX_ORDER>5/);
 });
 test('patch fails closed when upstream source changes unexpectedly',()=>{
