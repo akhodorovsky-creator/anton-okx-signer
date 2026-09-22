@@ -32,7 +32,7 @@ function prepare(source) {
     result = result.split(before).join(after);
   }
   for (const guard of [
-    'const CAP_EUR=200, TP=.05, SL=.02, PERIOD=15*60_000;',
+    'const CAP_EUR=Math.min(1000,Math.max(1,Number(process.env.CAPITAL_CAP_EUR||200))), TP=.05, SL=.02, PERIOD=15*60_000;',
     "const PAIRS=Object.freeze(['BTC-EUR','ETH-EUR','DOGE-EUR']);",
     "if(!d.actionable||d.signal!=='BUY'",
     'if(book.exposureEur+MAX_ORDER>CAP_EUR||book.availableEur<MAX_ORDER)continue;',
@@ -44,12 +44,12 @@ function prepare(source) {
 function main() {
   const patched = prepare(fs.readFileSync(sourceFile, 'utf8'));
   if (process.argv.includes('--verify')) {
-    console.log('ORDER_CAP_VERIFY_OK maxOrderCeilingEur=20 capitalCapEur=200 pairs=3 legacyAuto=BLOCKED guards=preserved');
+    console.log('ORDER_CAP_VERIFY_OK maxOrderCeilingEur=20 capitalCapCeilingEur=1000 pairs=3 legacyAuto=BLOCKED guards=preserved');
     return;
   }
   const max = Number(process.env.MAX_ORDER_EUR);
   if (!Number.isFinite(max) || max < 1 || max > 20) throw Error('INVALID_MAX_ORDER_EUR');
-  console.log('ANTON_ORDER_CAP_CONFIG '+JSON.stringify({maxOrderEur:max,capitalCapEur:200,pairs:3,legacyAuto:'BLOCKED'}));
+  const cap = Number(process.env.CAPITAL_CAP_EUR || 200); if (!Number.isFinite(cap) || cap < 1 || cap > 1000) throw Error('INVALID_CAPITAL_CAP_EUR'); console.log('ANTON_ORDER_CAP_CONFIG '+JSON.stringify({maxOrderEur:max,capitalCapEur:cap,pairs:3,legacyAuto:'BLOCKED'}));
   const child = new Module(sourceFile, module);
   child.filename = sourceFile;
   child.paths = Module._nodeModulePaths(__dirname);
