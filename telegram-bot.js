@@ -1,6 +1,7 @@
 "use strict";
 
 const { portfolio } = require("./multi-live");
+const { isReconciledDust } = require("./frequency-policy");
 
 const TOKEN = String(process.env.TELEGRAM_BOT_TOKEN || "").trim();
 const ALLOWED_CHAT_ID = String(process.env.TELEGRAM_ALLOWED_CHAT_ID || "").trim();
@@ -37,7 +38,7 @@ async function send(chatId, text) {
   });
 }
 function summary(book) {
-  const open = book.pairs.filter(p => Number(p.qty) > 1e-9);
+  const open = book.pairs.filter(p => Number(p.qty) > 1e-9 && !isReconciledDust(p));
   return [
     "ANTON Signal",
     "Режим: " + book.mode,
@@ -51,7 +52,7 @@ function summary(book) {
 }
 function positions(book) {
   const rows = book.pairs.map(p => {
-    const state = Number(p.qty) > 1e-9 ? "В ПОЗИЦИИ" : "нет";
+    const state = isReconciledDust(p) ? "технический остаток" : (Number(p.qty) > 1e-9 ? "В ПОЗИЦИИ" : "нет");
     return [
       p.pair + " — " + state,
       "  цена: " + money(p.price),
@@ -100,7 +101,7 @@ async function handleMessage(message) {
 function fingerprint(book) {
   return JSON.stringify({
     filledOrders: book.filledOrders,
-    positions: book.pairs.map(p => [p.pair, Number(p.qty) > 1e-9])
+    positions: book.pairs.map(p => [p.pair, Number(p.qty) > 1e-9 && !isReconciledDust(p)])
   });
 }
 async function watch() {
@@ -122,7 +123,8 @@ async function watch() {
       console.error("ANTON_TELEGRAM_WATCH_ERROR " + error.message);
     }
   };
-  await once();
+  const first = setTimeout(() => once().catch(e => console.error("ANTON_TELEGRAM_WATCH_START_ERROR " + e.message)), 15_000);
+  first.unref();
   setInterval(once, WATCH_MS).unref();
 }
 async function run() {
