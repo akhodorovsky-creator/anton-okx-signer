@@ -27,17 +27,26 @@ function observeOi(state, row, now) {
   return reference ? {ready: true, prior: reference.oi, lookbackMs: ts - reference.ts} :
     {ready: false, reason: 'OI_15M_WARMUP'};
 }
+// A sub-lot remnant is not sellable. Only permit numerical ledger noise smaller
+// than a millionth of one lot and less than 0.1% of the tracked residue.
+function isReconciledDust(position) {
+  const {qty, free} = position;
+  const min = Number(position.instrument?.minSz), lot = Number(position.instrument?.lotSz);
+  if (![qty, free, min, lot].every(Number.isFinite) ||
+      !(qty > 0) || !(free >= 0) || !(min > 0) || !(lot > 0)) return false;
+  if (!(qty < lot && qty < min && free < lot)) return false;
+  return Math.abs(free - qty) <= Math.min(lot * 1e-6, qty * 1e-3);
+}
 function entryBlock(position, allowDust = false) {
   const {qty, free} = position;
   const min = Number(position.instrument?.minSz), lot = Number(position.instrument?.lotSz);
   if (![qty, free, min, lot].every(Number.isFinite) || qty < 0 || free < 0 || min <= 0 || lot <= 0)
     return 'POSITION_UNVERIFIED';
   if (qty === 0) return null;
-  // Only a fraction of one exchange lot can be treated as dust. Larger residuals
-  // remain positions even when below the exchange minimum order size.
+  // Residual remains in cost basis, P&L and overall capital exposure.
   if (!(qty < lot && qty < min)) return 'POSITION_ALREADY_OPEN';
   if (!allowDust) return 'DUST_REENTRY_DISABLED';
-  if (Math.abs(free - qty) > Math.max(lot * 1e-9, qty * 1e-9)) return 'DUST_BALANCE_MISMATCH';
+  if (!isReconciledDust(position)) return 'DUST_BALANCE_MISMATCH';
   return null;
 }
-module.exports = {signalPeriod, dustEnabled, observeOi, entryBlock};
+module.exports = {signalPeriod, dustEnabled, observeOi, entryBlock, isReconciledDust};
