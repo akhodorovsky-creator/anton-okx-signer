@@ -15,7 +15,7 @@ test('real BTC and ETH residues are tracked as sub-lot dust',()=>{
 test('meaningful discrepancy or a real position is never hidden as dust',()=>{
   for(const p of [
     {...doge,free:0}, {...doge,free:2}, {...doge,free:doge.qty+2e-12},
-    {...doge,qty:0.000003,free:0.000003}, {...doge,qty:NaN}
+    {...doge,qty:0.000003,free:0.000003}, {...doge,qty:NaN}, {...doge,qty:1e-14,free:0}
   ]) assert.equal(isReconciledDust(p),false);
   assert.equal(entryBlock({...doge,free:2},true),'DUST_BALANCE_MISMATCH');
   assert.equal(entryBlock({...doge,qty:0.000003,free:0.000003},true),'POSITION_ALREADY_OPEN');
