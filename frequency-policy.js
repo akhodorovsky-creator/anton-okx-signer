@@ -28,14 +28,14 @@ function observeOi(state, row, now) {
     {ready: false, reason: 'OI_15M_WARMUP'};
 }
 // A sub-lot remnant is not sellable. Only permit numerical ledger noise smaller
-// than a millionth of one lot when reconciling with the exchange free balance.
+// than a millionth of one lot and less than 0.1% of the tracked residue.
 function isReconciledDust(position) {
   const {qty, free} = position;
   const min = Number(position.instrument?.minSz), lot = Number(position.instrument?.lotSz);
   if (![qty, free, min, lot].every(Number.isFinite) ||
       !(qty > 0) || !(free >= 0) || !(min > 0) || !(lot > 0)) return false;
   if (!(qty < lot && qty < min && free < lot)) return false;
-  return Math.abs(free - qty) <= Math.max(lot * 1e-6, qty * 1e-9);
+  return Math.abs(free - qty) <= Math.min(lot * 1e-6, qty * 1e-3);
 }
 function entryBlock(position, allowDust = false) {
   const {qty, free} = position;
