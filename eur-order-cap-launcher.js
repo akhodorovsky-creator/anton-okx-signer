@@ -15,8 +15,15 @@ function prepare(source) {
     ["function handler(req,res){const route=(req.url||'').split('?')[0];",
      "function handler(req,res){const route=(req.url||'').split('?')[0];" +
      "if(LIVE&&route==='/auto'&&req.method==='POST'){req.resume();return json(res,409,{ok:false,error:'MULTI_COORDINATOR_OWNS_ALL_TRADING'});}", 1],
+    ["const {signalPeriod,dustEnabled,observeOi,entryBlock}=require('./frequency-policy');",
+     "const {signalPeriod,dustEnabled,observeOi,entryBlock,isReconciledDust}=require('./frequency-policy');", 1],
+    ['let busy=false,uncertain=false,cache=null;',
+     'let busy=false,uncertain=false,cache=null;const reportedDust=new Set();', 1],
     ["console.error('ANTON_MULTI_EXIT_BLOCKED '+p.pair+' BELOW_MIN_OR_UNAVAILABLE');continue;",
-     "console.warn('ANTON_MULTI_EXIT_BLOCKED '+JSON.stringify({pair:p.pair,reason:'BELOW_MIN_OR_UNAVAILABLE',qty:p.qty,available:p.free,minSz:p.instrument.minSz,lotSz:p.instrument.lotSz}));continue;", 1]
+     "if(isReconciledDust(p)){if(!reportedDust.has(p.pair)){console.info('ANTON_MULTI_DUST '+JSON.stringify({pair:p.pair,qty:p.qty,available:p.free,minSz:p.instrument.minSz,lotSz:p.instrument.lotSz}));reportedDust.add(p.pair);}continue;}" +
+     "console.error('ANTON_MULTI_EXIT_BLOCKED '+JSON.stringify({pair:p.pair,reason:'BELOW_MIN_OR_UNAVAILABLE',qty:p.qty,available:p.free,minSz:p.instrument.minSz,lotSz:p.instrument.lotSz}));continue;", 1],
+    ["p.qty>0?'В позиции':", "p.qty>0?(p.dust?'Технический остаток':'В позиции'):", 1],
+    ["instrumentLive:p.instrument.state==='live'}))", "instrumentLive:p.instrument.state==='live',dust:isReconciledDust(p)}))", 1]
   ];
   let result = source;
   for (const [before, after, expected] of changes) {
