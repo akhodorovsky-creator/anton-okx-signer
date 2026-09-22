@@ -37,7 +37,11 @@ function entryBlock(position, allowDust = false) {
   // remain positions even when below the exchange minimum order size.
   if (!(qty < lot && qty < min)) return 'POSITION_ALREADY_OPEN';
   if (!allowDust) return 'DUST_REENTRY_DISABLED';
-  if (Math.abs(free - qty) > Math.max(lot * 1e-9, qty * 1e-9)) return 'DUST_BALANCE_MISMATCH';
+  // Order-ledger decimal arithmetic can drift from OKX availBal by a tiny amount.
+  // Allow at most one ten-millionth of a lot, capped at 0.1% of the smaller
+  // amount: a real missing, frozen or extra balance must still block entry.
+  const tolerance = Math.min(lot * 1e-7, Math.min(qty, free) * 1e-3);
+  if (Math.abs(free - qty) > tolerance) return 'DUST_BALANCE_MISMATCH';
   return null;
 }
 module.exports = {signalPeriod, dustEnabled, observeOi, entryBlock};
