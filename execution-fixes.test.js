@@ -1,24 +1,12 @@
 'use strict';
 const test=require('node:test');
 const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
 const {prepare}=require('./eur-order-cap-launcher');
 const {monitorPosition}=require('./risk-monitor');
-const baseline=[
-"const MAX_ORDER=Math.min(5,Number(process.env.MAX_ORDER_EUR||5));",
-"function orderSize(requested){if(requested>5)return false;}",
-"async function tick(){if(MAX_ORDER>5)throw Error('limit');}",
-"function run(){if(MAX_ORDER>5)throw Error('limit');}",
-"function handler(req,res){const route=(req.url||'').split('?')[0];}",
-"const {signalPeriod,dustEnabled,observeOi,entryBlock}=require('./frequency-policy');",
-"let busy=false,uncertain=false,cache=null;",
-"function exits(){for(const p of [{pair:'ETH-EUR',qty:1,free:0,instrument:{minSz:1,lotSz:1}}]){console.error('ANTON_MULTI_EXIT_BLOCKED '+p.pair+' BELOW_MIN_OR_UNAVAILABLE');continue;}}",
-"function page(){return \"p.qty>0?'В позиции': instrumentLive:p.instrument.state==='live'}))\";}",
-'const CAP_EUR=200, TP=.05, SL=.02, PERIOD=15*60_000;',
-"const PAIRS=Object.freeze(['BTC-EUR','ETH-EUR','DOGE-EUR']);",
-"function signal(d,book){for(const x of [1]){if(!d.actionable||d.signal!=='BUY')continue;",
-'if(book.exposureEur+MAX_ORDER>CAP_EUR||book.availableEur<MAX_ORDER)continue;}}',
-"const LIVE=process.env.MULTI_SPOT_LIVE==='true';"
-].join('\n');
+// Validate the coordinator that startup patches; avoid a stale copy of its source.
+const baseline=fs.readFileSync(path.join(__dirname,'multi-live.js'),'utf8');
 test('runtime patch raises max order consistently and disables legacy /auto',()=>{
   const result=prepare(baseline);
   assert.match(result,/MAX_ORDER=Math.min\(20/);
@@ -33,6 +21,11 @@ test('runtime patch raises max order consistently and disables legacy /auto',()=
 });
 test('patch fails closed when upstream source changes unexpectedly',()=>{
   assert.throws(()=>prepare(baseline.replace('requested>5','requested>6')),/SOURCE_PATCH_MISMATCH/);
+});
+test('patch still rejects a missing capital exposure guard',()=>{
+  const changed=baseline.replace('book.exposureEur+MAX_ORDER>CAP_EUR','false');
+  assert.notEqual(changed,baseline);
+  assert.throws(()=>prepare(changed),/TRADING_GUARD_SOURCE_MISMATCH/);
 });
 test('multi-pair legacy monitor never posts /auto',async()=>{
   const previous=process.env.MULTI_SPOT_LIVE;
