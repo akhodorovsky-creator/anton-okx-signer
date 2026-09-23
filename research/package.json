@@ -1,0 +1,8 @@
+{
+  "name": "anton-paper-strategy-lab",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Virtual EUR portfolios using public market data. No live trading capability.",
+  "scripts": {"start":"node paper.js","test":"node --test research.test.js"},
+  "engines": {"node":">=22"}
+}
