@@ -5,9 +5,14 @@ const {monitorPosition}=require('./risk-monitor');
 
 async function withMultiMode(enabled,fn){
   const previous=process.env.MULTI_SPOT_LIVE;
+  const previousApproval=process.env.TELEGRAM_TRADE_APPROVAL;
   process.env.MULTI_SPOT_LIVE=enabled?'true':'false';
+  process.env.TELEGRAM_TRADE_APPROVAL='false';
   try{return await fn();}
-  finally {if(previous===undefined)delete process.env.MULTI_SPOT_LIVE;else process.env.MULTI_SPOT_LIVE=previous;}
+  finally {
+    if(previous===undefined)delete process.env.MULTI_SPOT_LIVE;else process.env.MULTI_SPOT_LIVE=previous;
+    if(previousApproval===undefined)delete process.env.TELEGRAM_TRADE_APPROVAL;else process.env.TELEGRAM_TRADE_APPROVAL=previousApproval;
+  }
 }
 
 test('legacy monitor sends HOLD only, never BUY or SELL',async()=>withMultiMode(false,async()=>{
