@@ -15,8 +15,9 @@ async function monitorPosition({
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid PORT');
   // IMPORTANT: do not call /auto here: it could sell the BTC position at +3%
   // while the multi-pair coordinator is expecting +5%, or race a pending sell.
-  if (process.env.MULTI_SPOT_LIVE === 'true') {
-    return {action:'MULTI_COORDINATOR_ONLY',reason:'LEGACY_AUTO_DISABLED',mode:'LIVE'};
+  if (process.env.MULTI_SPOT_LIVE === 'true' || process.env.TELEGRAM_TRADE_APPROVAL === 'true') {
+    return {action:'MULTI_COORDINATOR_ONLY',reason:'LEGACY_AUTO_DISABLED',
+      mode:process.env.MULTI_SPOT_LIVE === 'true'?'LIVE':'TELEGRAM_APPROVAL'};
   }
   const response = await request(`http://127.0.0.1:${port}/auto`, {
     method:'POST',
