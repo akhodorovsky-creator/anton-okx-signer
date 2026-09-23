@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "purpose": "EXPLORATORY_PAPER_ONLY",
+  "dataVenue": "BINANCE_SPOT_EUR_PROXY_NOT_OKX_EXECUTIONS",
+  "pairs": ["BTC-EUR", "ETH-EUR", "DOGE-EUR"],
+  "barMs": 3600000,
+  "historyStart": "2025-12-15T00:00:00.000Z",
+  "developmentStart": "2026-01-01T00:00:00.000Z",
+  "validationStart": "2026-07-01T00:00:00.000Z",
+  "endExclusive": "2026-09-23T00:00:00.000Z",
+  "candidates": ["breakout24", "pullback20", "momentum24"],
+  "capitalEur": 300,
+  "orderEur": 20,
+  "maximumExposureEur": 60,
+  "feeRate": 0.0035,
+  "slippageRate": 0.001,
+  "stressSlippageRate": 0.0025,
+  "maxSpreadRate": 0.002,
+  "takeProfitRate": 0.05,
+  "stopLossRate": 0.02,
+  "maximumHoldingHours": 168,
+  "pairCooldownHours": 24,
+  "dailyEntryLossLimitEur": 3,
+  "drawdownEntryLimitEur": 6,
+  "screen": {
+    "minimumClosedTrades": 30,
+    "minimumProfitFactor": 1.2,
+    "positiveBaseAndStressPnl": true
+  },
+  "notes": [
+    "Rules and split fixed before running results; no parameter search.",
+    "Existing live strategy is NOT reconstructed without contemporaneous OKX OI/funding.",
+    "Spot, long only, fixed notional, no averaging down or leverage.",
+    "Signals use only closed hourly bars; historical fills use next bar open.",
+    "TP/SL are scheduled snapshot thresholds, not guaranteed exchange stop prices.",
+    "Profitability screen is exploratory and cannot authorize live execution."
+  ]
+}

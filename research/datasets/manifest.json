@@ -1,0 +1,100 @@
+{
+  "venue": "Binance public Spot API",
+  "fetchedAt": "2026-09-23T16:27:46.892732+00:00",
+  "config": {
+    "version": 1,
+    "purpose": "EXPLORATORY_PAPER_ONLY",
+    "dataVenue": "BINANCE_SPOT_EUR_PROXY_NOT_OKX_EXECUTIONS",
+    "pairs": [
+      "BTC-EUR",
+      "ETH-EUR",
+      "DOGE-EUR"
+    ],
+    "barMs": 3600000,
+    "historyStart": "2025-12-15T00:00:00.000Z",
+    "developmentStart": "2026-01-01T00:00:00.000Z",
+    "validationStart": "2026-07-01T00:00:00.000Z",
+    "endExclusive": "2026-09-23T00:00:00.000Z",
+    "candidates": [
+      "breakout24",
+      "pullback20",
+      "momentum24"
+    ],
+    "capitalEur": 300,
+    "orderEur": 20,
+    "maximumExposureEur": 60,
+    "feeRate": 0.0035,
+    "slippageRate": 0.001,
+    "stressSlippageRate": 0.0025,
+    "maxSpreadRate": 0.002,
+    "takeProfitRate": 0.05,
+    "stopLossRate": 0.02,
+    "maximumHoldingHours": 168,
+    "pairCooldownHours": 24,
+    "dailyEntryLossLimitEur": 3,
+    "drawdownEntryLimitEur": 6,
+    "screen": {
+      "minimumClosedTrades": 30,
+      "minimumProfitFactor": 1.2,
+      "positiveBaseAndStressPnl": true
+    },
+    "notes": [
+      "Rules and split fixed before running results; no parameter search.",
+      "Existing live strategy is NOT reconstructed without contemporaneous OKX OI/funding.",
+      "Spot, long only, fixed notional, no averaging down or leverage.",
+      "Signals use only closed hourly bars; historical fills use next bar open.",
+      "TP/SL are scheduled snapshot thresholds, not guaranteed exchange stop prices.",
+      "Profitability screen is exploratory and cannot authorize live execution."
+    ]
+  },
+  "files": [
+    {
+      "pair": "BTC-EUR",
+      "rows": 6768,
+      "first": 1765756800000,
+      "last": 1790118000000,
+      "sha256": "680bf33f4cf8eb4e095ae33a64ce968cc030a605b66a7d22a6e47248502e4f56",
+      "requests": [
+        "https://api.binance.com/api/v3/klines?symbol=BTCEUR&interval=1h&startTime=1765756800000&endTime=1790121599999&limit=1000",
+        "https://api.binance.com/api/v3/klines?symbol=BTCEUR&interval=1h&startTime=1769356800000&endTime=1790121599999&limit=1000",
+        "https://api.binance.com/api/v3/klines?symbol=BTCEUR&interval=1h&startTime=1772956800000&endTime=1790121599999&limit=1000",
+        "https://api.binance.com/api/v3/klines?symbol=BTCEUR&interval=1h&startTime=1776556800000&endTime=1790121599999&limit=1000",
+        "https://api.binance.com/api/v3/klines?symbol=BTCEUR&interval=1h&startTime=1780156800000&endTime=1790121599999&limit=1000",
+        "https://api.binance.com/api/v3/klines?symbol=BTCEUR&interval=1h&startTime=1783756800000&endTime=1790121599999&limit=1000",
+        "https://api.binance.com/api/v3/klines?symbol=BTCEUR&interval=1h&startTime=1787356800000&endTime=1790121599999&limit=1000"
+      ]
+    },
+    {
+      "pair": "ETH-EUR",
+      "rows": 6768,
+      "first": 1765756800000,
+      "last": 1790118000000,
+      "sha256": "a1566034cafea716fe23e410ad50b4c22db891e78338f85aafec8b0d26650b77",
+      "requests": [
+        "https://api.binance.com/api/v3/klines?symbol=ETHEUR&interval=1h&startTime=1765756800000&endTime=1790121599999&limit=1000",
+        "https://api.binance.com/api/v3/klines?symbol=ETHEUR&interval=1h&startTime=1769356800000&endTime=1790121599999&limit=1000",
+        "https://api.binance.com/api/v3/klines?symbol=ETHEUR&interval=1h&startTime=1772956800000&endTime=1790121599999&limit=1000",
+        "https://api.binance.com/api/v3/klines?symbol=ETHEUR&interval=1h&startTime=1776556800000&endTime=1790121599999&limit=1000",
+        "https://api.binance.com/api/v3/klines?symbol=ETHEUR&interval=1h&startTime=1780156800000&endTime=1790121599999&limit=1000",
+        "https://api.binance.com/api/v3/klines?symbol=ETHEUR&interval=1h&startTime=1783756800000&endTime=1790121599999&limit=1000",
+        "https://api.binance.com/api/v3/klines?symbol=ETHEUR&interval=1h&startTime=1787356800000&endTime=1790121599999&limit=1000"
+      ]
+    },
+    {
+      "pair": "DOGE-EUR",
+      "rows": 6768,
+      "first": 1765756800000,
+      "last": 1790118000000,
+      "sha256": "ba6df23703cc9a90c84b392b211b725bb77cba8c0415057c7d4de045db971aaa",
+      "requests": [
+        "https://api.binance.com/api/v3/klines?symbol=DOGEEUR&interval=1h&startTime=1765756800000&endTime=1790121599999&limit=1000",
+        "https://api.binance.com/api/v3/klines?symbol=DOGEEUR&interval=1h&startTime=1769356800000&endTime=1790121599999&limit=1000",
+        "https://api.binance.com/api/v3/klines?symbol=DOGEEUR&interval=1h&startTime=1772956800000&endTime=1790121599999&limit=1000",
+        "https://api.binance.com/api/v3/klines?symbol=DOGEEUR&interval=1h&startTime=1776556800000&endTime=1790121599999&limit=1000",
+        "https://api.binance.com/api/v3/klines?symbol=DOGEEUR&interval=1h&startTime=1780156800000&endTime=1790121599999&limit=1000",
+        "https://api.binance.com/api/v3/klines?symbol=DOGEEUR&interval=1h&startTime=1783756800000&endTime=1790121599999&limit=1000",
+        "https://api.binance.com/api/v3/klines?symbol=DOGEEUR&interval=1h&startTime=1787356800000&endTime=1790121599999&limit=1000"
+      ]
+    }
+  ]
+}
