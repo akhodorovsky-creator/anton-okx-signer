@@ -122,7 +122,7 @@ async function executeApprovedProposal(id){
       if(p.latest&&Date.now()-p.latest<30*60_000)throw Error('RECENT_FILL_COOLDOWN');
       const check=orderSize(p.instrument,p.price,MAX_ORDER);
       if(!check.valid)throw Error('BUY_BLOCKED_'+check.reason);
-      if(book.exposureEur+MAX_ORDER>CAP_EUR)throw Error('CAPITAL_LIMIT');
+      if(book.exposureEur>CAP_EUR-MAX_ORDER)throw Error('CAPITAL_LIMIT');
       if(book.availableEur<MAX_ORDER)throw Error('INSUFFICIENT_EUR');
       size=String(MAX_ORDER);
     }else{
