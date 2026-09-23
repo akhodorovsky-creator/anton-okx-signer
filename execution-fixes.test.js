@@ -27,6 +27,18 @@ test('patch still rejects a missing capital exposure guard',()=>{
   assert.notEqual(changed,baseline);
   assert.throws(()=>prepare(changed),/TRADING_GUARD_SOURCE_MISMATCH/);
 });
+test('approval mode legacy monitor never posts /auto',async()=>{
+  const live=process.env.MULTI_SPOT_LIVE, approval=process.env.TELEGRAM_TRADE_APPROVAL;
+  process.env.MULTI_SPOT_LIVE='false';
+  process.env.TELEGRAM_TRADE_APPROVAL='true';
+  try {
+    const result=await monitorPosition({port:4000,signerToken:'local',request:()=>{throw Error('Must not call /auto');}});
+    assert.deepEqual(result,{action:'MULTI_COORDINATOR_ONLY',reason:'LEGACY_AUTO_DISABLED',mode:'TELEGRAM_APPROVAL'});
+  } finally {
+    if(live===undefined)delete process.env.MULTI_SPOT_LIVE; else process.env.MULTI_SPOT_LIVE=live;
+    if(approval===undefined)delete process.env.TELEGRAM_TRADE_APPROVAL; else process.env.TELEGRAM_TRADE_APPROVAL=approval;
+  }
+});
 test('multi-pair legacy monitor never posts /auto',async()=>{
   const previous=process.env.MULTI_SPOT_LIVE;
   process.env.MULTI_SPOT_LIVE='true';
