@@ -2,7 +2,7 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {CONFIG,HOUR,features,decision,initialState,step,summary}=require('./engine');
-const {readPublic}=require('./public-market');
+const {readPublic,snapshot}=require('./public-market');
 const {restore,persist,processObservation}=require('./paper');
 const T=Date.parse('2026-01-01T00:00:00Z');
 function bars(n=300) {return Array.from({length:n},(_,i)=>({timestamp:T+i*HOUR,open:100,high:101,low:99,close:100,volume:100}));}
@@ -55,8 +55,8 @@ test('public client rejects every account or order endpoint',async()=>{
   assert.equal(calls,0);
 });
 test('public client uses GET without auth and refuses redirects',async()=>{
-  let options;await readPublic('/api/v3/ticker/bookTicker',{symbol:'BTCEUR'},async(url,opts)=>{
-    assert.equal(url.origin,'https://api.binance.com');options=opts;return {ok:true,text:async()=>'{}'};
+  let options;await readPublic('/api/v5/market/ticker',{instId:'BTC-EUR'},async(url,opts)=>{
+    assert.equal(url.origin,'https://eea.okx.com');options=opts;return {ok:true,text:async()=>JSON.stringify({code:'0',data:[]})};
   });
   assert.equal(options.method,'GET');assert.equal(options.redirect,'error');assert.equal(options.headers.authorization,undefined);
 });
@@ -64,7 +64,7 @@ test('late boot observes without retroactive entries; state survives ordinary re
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'anton-paper-test-')),file=path.join(dir,'state.json');
   try{
     const store=restore(file),now=T+HOUR+10*60000;
-    processObservation(store,{venue:'BINANCE_PUBLIC_EUR_PROXY',observedAt:now,snapshot:snap(),quotes:quotes()},now);
+    processObservation(store,{venue:'OKX_PUBLIC_EUR',observedAt:now,snapshot:snap(),quotes:quotes()},now);
     assert.ok(store.states.every(s=>s.entries===0));persist(store,file);
     assert.deepEqual(restore(file),store);
     const epoch=store.epoch;fs.unlinkSync(file);assert.notEqual(restore(file).epoch,epoch);
@@ -72,9 +72,30 @@ test('late boot observes without retroactive entries; state survives ordinary re
 });
 test('paper runner refuses stale observations and venue mixing',()=>{
   const store={states:CONFIG.candidates.map(x=>initialState(x))};
-  assert.throws(()=>processObservation(store,{venue:'OKX',observedAt:T},T),/VENUE/);
-  assert.throws(()=>processObservation(store,{venue:'BINANCE_PUBLIC_EUR_PROXY',observedAt:T},T+61000),/STALE_OBSERVATION/);
+  assert.throws(()=>processObservation(store,{venue:'BINANCE',observedAt:T},T),/VENUE/);
+  assert.throws(()=>processObservation(store,{venue:'OKX_PUBLIC_EUR',observedAt:T},T+61000),/STALE_OBSERVATION/);
 });
 test('paper state cannot be switched into live mode',()=>{
   const state=initialState('momentum24');state.mode='LIVE';assert.throws(()=>step(state,snap(),quotes(),T+HOUR),/PAPER_ONLY/);
+});
+function fakeMarket(now,stale=false) {
+  return async(url,opts)=>{
+    assert.equal(opts.method,'GET');
+    const pair=url.searchParams.get('instId');let data;
+    if(url.pathname==='/api/v5/market/history-candles'){
+      const end=Number(url.searchParams.get('after')||now)-HOUR;
+      data=Array.from({length:100},(_,i)=>[String(end-i*HOUR),'100','101','99','100','100','','','1']);
+    }else if(url.pathname==='/api/v5/market/ticker')data=[{instId:pair,bidPx:'99.99',askPx:'100.01',ts:String(now-(stale?121000:0))}];
+    else throw Error('UNEXPECTED_ROUTE');
+    return {ok:true,text:async()=>JSON.stringify({code:'0',data})};
+  };
+}
+test('OKX adapter paginates 500 aligned confirmed candles with fresh quotes',async()=>{
+  const now=T+500*HOUR,r=await snapshot({request:fakeMarket(now),now});
+  assert.equal(r.venue,'OKX_PUBLIC_EUR');
+  for(const p of CONFIG.pairs){assert.equal(r.snapshot[p].timestamp,now-HOUR);assert.equal(r.snapshot[p].ready,true);assert.equal(r.quotes[p].exchangeTimestamp,now);}
+});
+test('OKX adapter rejects stale quotes rather than simulating executions',async()=>{
+  const now=T+500*HOUR;
+  await assert.rejects(snapshot({request:fakeMarket(now,true),now}),/INVALID_OR_STALE_QUOTE/);
 });
