@@ -35,7 +35,8 @@ function parsePnlBaselines(raw){
 const PNL_BASELINES=parsePnlBaselines(process.env.PNL_BASELINES_JSON);
 const BOT_START=Date.parse('2026-09-01T00:00:00Z');
 const states=new Map(PAIRS.map(p=>[p,{lastOi:null,lastSignal:null,lastSignalAt:null}]));
-let busy=false,uncertain=false,cache=null,pendingProposal=null;
+let busy=false,uncertain=false,cache=null;
+let pendingProposal=null;
 const n=x=>x==null||x===''?NaN:Number(x);
 function requirePositive(x,field){const v=n(x);if(!(v>0)||!Number.isFinite(v))throw Error('INVALID_'+field);return v;}
 function round(x){return Number(x.toFixed(4));}
@@ -46,7 +47,7 @@ async function readJson(req){let raw='';for await(const chunk of req){raw+=chunk
 function activeProposal(now=Date.now()){if(!pendingProposal)return null;if(pendingProposal.used||pendingProposal.expiresAt<=now){pendingProposal=null;return null;}return pendingProposal;}
 function publicProposal(p){return p?{id:p.id,pair:p.pair,side:p.side,reason:p.reason,price:p.price,size:p.size,valueEur:p.valueEur,createdAt:new Date(p.createdAt).toISOString(),expiresAt:new Date(p.expiresAt).toISOString()}:null;}
 function queueProposal({pair,side,reason,price,size,valueEur},now=Date.now()){
-  if(!APPROVAL_MODE||LIVE)return null;
+  if(!APPROVAL_MODE)return null;
   const existing=activeProposal(now);
   if(existing){
     if(existing.pair===pair&&existing.side===side&&existing.reason===reason)return existing;
@@ -71,7 +72,7 @@ function applyPnlBaseline(book,pair,baselines=PNL_BASELINES){
 }
 function reportLedger(orders,price,pair){return applyPnlBaseline(ledger(orders,price),pair);}
 function orderSize(instrument,price,requested=MAX_ORDER){if(instrument.state!=='live')return{valid:false,reason:'PAIR_NOT_LIVE'};const min=requirePositive(instrument.minSz,'MIN_SIZE'),lot=requirePositive(instrument.lotSz,'LOT_SIZE');if(!(requested>0)||requested>5||requested>CAP_EUR)return{valid:false,reason:'ORDER_CAP'};if(min*price*1.03>requested)return{valid:false,reason:'BELOW_EXCHANGE_MINIMUM'};return{valid:true,min,lot};}
-async function portfolio(){if(Date.now()-BOT_START>=85*86400_000)throw Error('ORDER_ARCHIVE_TIME_HORIZON_EXCEEDED');const bal=await signer('GET','/api/v5/account/balance?ccy=EUR,BTC,ETH,DOGE');const details=bal[0]?.details;if(!Array.isArray(details))throw Error('ACCOUNT_BALANCE_UNVERIFIED');const eurRow=details.find(x=>x.ccy==='EUR');const availableEur=eurRow?n(eurRow.availBal):0;if(!(availableEur>=0))throw Error('AVAILABLE_EUR_UNVERIFIED');const balances=Object.fromEntries(details.map(x=>[x.ccy,n(x.availBal)]));const pairs=[];for(const pair of PAIRS){const [recent,archive,pending,instruments,ticker]=await Promise.all([signer('GET',`/api/v5/trade/orders-history?instType=SPOT&instId=${pair}&limit=100`),signer('GET',`/api/v5/trade/orders-history-archive?instType=SPOT&instId=${pair}&limit=100`),signer('GET',`/api/v5/trade/orders-pending?instType=SPOT&instId=${pair}&limit=100`),signer('GET',`/api/v5/public/instruments?instType=SPOT&instId=${pair}`),publicGet(`/api/v5/market/ticker?instId=${pair}`)]);if(pending.length>=100||!instruments[0]||!ticker.data[0])throw Error('PAIR_UNVERIFIED_'+pair);const price=requirePositive(ticker.data[0].last,'TICKER_'+pair);const orders=uniqueOrders(recent,archive);const book=ledger(orders,price);const report=reportLedger(orders,price,pair);const free=balances[pair.split('-')[0]]??0;if(!(free>=0))throw Error('BASE_BALANCE_UNVERIFIED_'+pair);pairs.push({pair,price,...book,pnlEur:report.pnlEur,free,pending:pending.filter(x=>String(x.clOrdId||'').startsWith('ANTON')).length,instrument:instruments[0],minTrade:round(Number(instruments[0].minSz)*price*1.03)});}const exposureEur=pairs.reduce((s,p)=>s+p.exposure,0),pnlEur=pairs.reduce((s,p)=>s+p.pnlEur,0);if(!Number.isFinite(exposureEur)||!Number.isFinite(pnlEur))throw Error('PORTFOLIO_UNVERIFIED');return{pairs,exposureEur,pnlEur,availableEur,filledOrders:pairs.reduce((s,p)=>s+p.fills,0),mode:LIVE?'LIVE':APPROVAL_MODE?'TELEGRAM_APPROVAL':'MONITOR_ONLY',updatedAt:new Date().toISOString(),capitalLimitEur:CAP_EUR,orderLimitEur:MAX_ORDER};}
+async function portfolio(){if(Date.now()-BOT_START>=85*86400_000)throw Error('ORDER_ARCHIVE_TIME_HORIZON_EXCEEDED');const bal=await signer('GET','/api/v5/account/balance?ccy=EUR,BTC,ETH,DOGE');const details=bal[0]?.details;if(!Array.isArray(details))throw Error('ACCOUNT_BALANCE_UNVERIFIED');const eurRow=details.find(x=>x.ccy==='EUR');const availableEur=eurRow?n(eurRow.availBal):0;if(!(availableEur>=0))throw Error('AVAILABLE_EUR_UNVERIFIED');const balances=Object.fromEntries(details.map(x=>[x.ccy,n(x.availBal)]));const pairs=[];for(const pair of PAIRS){const [recent,archive,pending,instruments,ticker]=await Promise.all([signer('GET',`/api/v5/trade/orders-history?instType=SPOT&instId=${pair}&limit=100`),signer('GET',`/api/v5/trade/orders-history-archive?instType=SPOT&instId=${pair}&limit=100`),signer('GET',`/api/v5/trade/orders-pending?instType=SPOT&instId=${pair}&limit=100`),signer('GET',`/api/v5/public/instruments?instType=SPOT&instId=${pair}`),publicGet(`/api/v5/market/ticker?instId=${pair}`)]);if(pending.length>=100||!instruments[0]||!ticker.data[0])throw Error('PAIR_UNVERIFIED_'+pair);const price=requirePositive(ticker.data[0].last,'TICKER_'+pair);const orders=uniqueOrders(recent,archive);const book=ledger(orders,price);const report=reportLedger(orders,price,pair);const free=balances[pair.split('-')[0]]??0;if(!(free>=0))throw Error('BASE_BALANCE_UNVERIFIED_'+pair);pairs.push({pair,price,...book,pnlEur:report.pnlEur,free,pending:pending.filter(x=>String(x.clOrdId||'').startsWith('ANTON')).length,instrument:instruments[0],minTrade:round(Number(instruments[0].minSz)*price*1.03)});}const exposureEur=pairs.reduce((s,p)=>s+p.exposure,0),pnlEur=pairs.reduce((s,p)=>s+p.pnlEur,0);if(!Number.isFinite(exposureEur)||!Number.isFinite(pnlEur))throw Error('PORTFOLIO_UNVERIFIED');return{pairs,exposureEur,pnlEur,availableEur,filledOrders:pairs.reduce((s,p)=>s+p.fills,0),mode:APPROVAL_MODE?'TELEGRAM_APPROVAL':LIVE?'LIVE':'MONITOR_ONLY',updatedAt:new Date().toISOString(),capitalLimitEur:CAP_EUR,orderLimitEur:MAX_ORDER};}
 async function dashboardFallback(cause){
   const bal=await signer('GET','/api/v5/account/balance?ccy=EUR,BTC,ETH,DOGE');
   const details=bal[0]?.details;
@@ -96,7 +97,7 @@ async function dashboardFallback(cause){
   }
   return {
     ok:true,degraded:true,warning:'История ордеров требует сверки; торговля заблокирована до восстановления учёта позиции.',
-    diagnostic:cause,mode:LIVE?'LIVE — SAFE HOLD':APPROVAL_MODE?'TELEGRAM_APPROVAL — SAFE HOLD':'MONITOR_ONLY',
+    diagnostic:cause,mode:APPROVAL_MODE?'TELEGRAM_APPROVAL — SAFE HOLD':LIVE?'LIVE — SAFE HOLD':'MONITOR_ONLY',
     pnlEur:null,exposureEur:pairs.reduce((s,p)=>s+p.exposure,0),availableEur,
     filledOrders:null,pairs,updatedAt:new Date().toISOString(),
     capitalLimitEur:CAP_EUR,orderLimitEur:MAX_ORDER
@@ -154,7 +155,7 @@ async function tick(){
       const size=sellSize(p.qty,p.free,p.instrument.lotSz,p.instrument.minSz);
       if(!size){console.error('ANTON_MULTI_EXIT_BLOCKED '+p.pair+' BELOW_MIN_OR_UNAVAILABLE');continue;}
       const id='ANTON'+crypto.randomBytes(10).toString('hex');
-      if(!LIVE){
+      if(APPROVAL_MODE){
         queueProposal({pair:p.pair,side:'sell',reason,price:p.price,size,valueEur:Number(size)*p.price});
         return;
       }
@@ -186,13 +187,13 @@ async function tick(){
       const oiNow=n(oi.data[0]?.oiUsd??oi.data[0]?.oi);
       if(d.marketInputsFresh&&oiNow>0)state.lastOi=oiNow;
       if(!d.actionable||d.signal!=='BUY')continue;
-      const blocked=entryBlock(p,APPROVAL_MODE&&!LIVE?true:ALLOW_DUST_REENTRY);
+      const blocked=entryBlock(p,APPROVAL_MODE?true:ALLOW_DUST_REENTRY);
       if(blocked){console.log('ANTON_MULTI_SKIP '+JSON.stringify({pair:p.pair,reason:blocked}));continue;}
       if(p.latest&&now-p.latest<30*60_000){console.log('ANTON_MULTI_SKIP '+JSON.stringify({pair:p.pair,reason:'RECENT_FILL_COOLDOWN'}));continue;}
       const check=orderSize(p.instrument,p.price);
       if(!check.valid){console.log('ANTON_MULTI_SKIP '+JSON.stringify({pair:p.pair,reason:check.reason,minTrade:p.minTrade}));continue;}
       if(book.exposureEur+MAX_ORDER>CAP_EUR||book.availableEur<MAX_ORDER)continue;
-      if(!LIVE){
+      if(APPROVAL_MODE){
         queueProposal({pair:p.pair,side:'buy',reason:'STRATEGY_BUY',price:p.price,size:String(MAX_ORDER),valueEur:MAX_ORDER});
         break;
       }
@@ -210,7 +211,7 @@ if(route==='/trade-proposal'&&req.method==='GET'){
 }
 if(route==='/trade-approval'&&req.method==='POST'){
   if(!approvalAuthorized(req))return json(res,401,{ok:false,error:'Unauthorized'});
-  if(!APPROVAL_MODE||LIVE)return json(res,409,{ok:false,error:'APPROVAL_MODE_INACTIVE'});
+  if(!APPROVAL_MODE)return json(res,409,{ok:false,error:'APPROVAL_MODE_INACTIVE'});
   try{
     const body=await readJson(req),proposal=activeProposal();
     if(!proposal||proposal.id!==String(body.id||''))return json(res,409,{ok:false,error:'PROPOSAL_NOT_ACTIVE'});
