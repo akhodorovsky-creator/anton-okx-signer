@@ -2,9 +2,9 @@
 // Standalone virtual portfolios. No exchange account credentials or live orders.
 const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),crypto=require('node:crypto');
 const {CONFIG,HOUR,initialState,step,summary,decision}=require('./engine');
-const {snapshot}=require('./public-market');
+const {snapshot,VENUE}=require('./public-market');
 const STORE=process.env.PAPER_STATE_PATH||path.join('/tmp','anton-paper-state.json');
-const CONFIG_HASH=crypto.createHash('sha256').update(JSON.stringify(CONFIG)).digest('hex');
+const CONFIG_HASH=crypto.createHash('sha256').update(JSON.stringify({config:CONFIG,forwardVenue:VENUE})).digest('hex');
 function restore(file=STORE) {
   if(!fs.existsSync(file))return {version:1,mode:'PAPER_ONLY',configHash:CONFIG_HASH,epoch:crypto.randomUUID(),createdAt:new Date().toISOString(),states:CONFIG.candidates.map(x=>initialState(x)),lastObservation:null};
   const value=JSON.parse(fs.readFileSync(file,'utf8'));
@@ -16,7 +16,7 @@ function persist(state,file=STORE) {
   fs.writeFileSync(file+'.tmp',JSON.stringify(state),{mode:0o600});fs.renameSync(file+'.tmp',file);
 }
 function processObservation(store,observation,now=Date.now()) {
-  if(observation.venue!=='BINANCE_PUBLIC_EUR_PROXY')throw Error('VENUE_MISMATCH');
+  if(observation.venue!==VENUE)throw Error('VENUE_MISMATCH');
   if(!Number.isFinite(observation.observedAt)||now-observation.observedAt>60000||now<observation.observedAt)throw Error('STALE_OBSERVATION');
   const lastClose=observation.snapshot['BTC-EUR'].timestamp+HOUR;
   if(now-lastClose<0||now-lastClose>HOUR)throw Error('STALE_SIGNAL');
