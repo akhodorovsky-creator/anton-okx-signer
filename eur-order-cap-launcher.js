@@ -14,7 +14,7 @@ function prepare(source) {
     ['MAX_ORDER>5', 'MAX_ORDER>20', 2],
     ["function handler(req,res){const route=(req.url||'').split('?')[0];",
      "function handler(req,res){const route=(req.url||'').split('?')[0];" +
-     "if(LIVE&&route==='/auto'&&req.method==='POST'){req.resume();return json(res,409,{ok:false,error:'MULTI_COORDINATOR_OWNS_ALL_TRADING'});}", 1],
+     "if((LIVE||APPROVAL_MODE)&&route==='/auto'&&req.method==='POST'){req.resume();return json(res,409,{ok:false,error:'MULTI_COORDINATOR_OWNS_ALL_TRADING'});}", 1],
     ["const {signalPeriod,dustEnabled,observeOi,entryBlock}=require('./frequency-policy');",
      "const {signalPeriod,dustEnabled,observeOi,entryBlock,isReconciledDust}=require('./frequency-policy');", 1],
     ['let busy=false,uncertain=false,cache=null,pendingProposal=null;',
