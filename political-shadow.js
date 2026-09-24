@@ -1,12 +1,14 @@
 "use strict";
-// Independent read-only news observer. NEVER imports order execution or emits BUY/SELL.
+// Independent news observer. NEVER imports order execution or emits BUY/SELL.
 const crypto = require('node:crypto');
+const fs = require('node:fs');
 const QUERY='(Trump OR "Elon Musk") (bitcoin OR crypto OR tariffs OR sanctions OR Iran)';
 const FEEDS = [
   'https://news.google.com/rss/search?q=' + encodeURIComponent(QUERY+' when:1h') + '&hl=en-US&gl=US&ceid=US:en',
   'https://www.bing.com/news/search?q=' + encodeURIComponent(QUERY) + '&format=rss'
 ];
 const INTERVAL = 15 * 60_000;
+const STATE_FILE = process.env.POLITICAL_SHADOW_STATE_FILE || '/tmp/anton-political-shadow.json';
 const seen = new Set();
 function decode(s) { return s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;|&apos;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim(); }
 function extract(xml, now=Date.now()) {
@@ -36,9 +38,33 @@ async function readFeed(fetchFn=fetch, now=Date.now()) {
   }
   throw Error('NEWS_SOURCES_UNAVAILABLE_'+failures.join('_'));
 }
+function summarize(items, now=Date.now()) {
+  const subjectCounts={CRYPTO:0,TRADE:0,GEOPOLITICS:0};
+  let latest=0;
+  for(const item of items){
+    latest=Math.max(latest,Date.parse(item.publishedAt)||0);
+    for(const subject of item.subjects||[])if(Object.prototype.hasOwnProperty.call(subjectCounts,subject))subjectCounts[subject]++;
+  }
+  return {
+    version:1,
+    mode:'MARKET_CONTEXT',
+    feedHealthy:true,
+    matching:items.length,
+    subjectCounts,
+    latestPublishedAt:latest?new Date(latest).toISOString():null,
+    at:new Date(now).toISOString()
+  };
+}
+function writeState(state, file=STATE_FILE) {
+  const tmp=file+'.'+process.pid+'.tmp';
+  fs.writeFileSync(tmp,JSON.stringify(state),{encoding:'utf8',mode:0o600});
+  fs.renameSync(tmp,file);
+}
 async function tick(fetchFn=fetch, log=console.log, now=Date.now()) {
   try {
     const items=await readFeed(fetchFn,now);
+    const state=summarize(items,now);
+    writeState(state);
     let fresh=0;
     for (const event of items) {
       if(seen.has(event.id))continue;
@@ -46,17 +72,19 @@ async function tick(fetchFn=fetch, log=console.log, now=Date.now()) {
       log('ANTON_POLITICAL_SHADOW '+JSON.stringify({...event,mode:'OBSERVE_ONLY',tradeSignal:null}));
     }
     while(seen.size>250)seen.delete(seen.values().next().value);
-    log('ANTON_POLITICAL_SHADOW_STATUS '+JSON.stringify({mode:'OBSERVE_ONLY',feedHealthy:true,matching:items.length,newEvents:fresh,at:new Date(now).toISOString()}));
+    log('ANTON_POLITICAL_SHADOW_STATUS '+JSON.stringify({...state,mode:'MARKET_CONTEXT',newEvents:fresh}));
     return {ok:true,matching:items.length,newEvents:fresh};
   } catch(e) {
-    log('ANTON_POLITICAL_SHADOW_STATUS '+JSON.stringify({mode:'OBSERVE_ONLY',feedHealthy:false,error:String(e.message).slice(0,100),at:new Date(now).toISOString()}));
+    const failed={version:1,mode:'MARKET_CONTEXT',feedHealthy:false,matching:0,subjectCounts:{CRYPTO:0,TRADE:0,GEOPOLITICS:0},latestPublishedAt:null,error:String(e.message).slice(0,100),at:new Date(now).toISOString()};
+    try{writeState(failed);}catch(writeError){log('ANTON_POLITICAL_SHADOW_STATE_ERROR '+String(writeError.message).slice(0,100));}
+    log('ANTON_POLITICAL_SHADOW_STATUS '+JSON.stringify(failed));
     return {ok:false};
   }
 }
 function start(){
   if(process.env.POLITICAL_SHADOW_ENABLED!=='true')return;
-  console.log('ANTON_POLITICAL_SHADOW_START mode=OBSERVE_ONLY orders=DISABLED');
+  console.log('ANTON_POLITICAL_SHADOW_START mode=MARKET_CONTEXT orders=DISABLED');
   tick();setInterval(tick,INTERVAL);
 }
 if(require.main===module)start();
-module.exports={extract,readFeed,tick,start};
+module.exports={extract,readFeed,summarize,writeState,tick,start,STATE_FILE};
