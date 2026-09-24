@@ -157,6 +157,8 @@ async function handleCallback(query) {
     const side = result.side === "buy" ? "BUY" : "SELL";
     return send(chatId, "Ордер подтверждён и отправлен: " + side + " " + result.pair + "\nOrder ID: " + result.orderId);
   } catch (error) {
+    if (error.message === "PROPOSAL_NOT_ACTIVE") return send(chatId, "Предложение истекло или уже было обработано. Дождитесь нового сигнала.");
+    if (error.message === "PROPOSAL_PRICE_MOVED") return send(chatId, "Цена заметно изменилась. Этот ордер не отправлен; дождитесь нового сигнала.");
     return send(chatId, "Ордер не отправлен: " + error.message);
   }
 }
