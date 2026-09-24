@@ -3,14 +3,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const {prepare} = require('./eur-order-cap-launcher');
 const minute = 60000;
 const start = Date.UTC(2026, 8, 22, 0, 0);
-// Execute the exact production-patched coordinator with an entirely fake clock,
+// Execute the exact production coordinator with an entirely fake clock,
 // exchange and HTTP stack. There is no network and no child-process execution.
 function harness({interval = '5', allowDust = true, kind = 'empty', signal = false, pending = false, stale = false} = {}) {
   let now = start, requests = [], logs = [], scheduled = null;
-  const source = prepare(fs.readFileSync(require.resolve('./multi-live'), 'utf8'));
+  const source = fs.readFileSync(require.resolve('./multi-live'), 'utf8');
   const prices = {'BTC-EUR': 65000, 'ETH-EUR': 3000, 'DOGE-EUR': 0.15};
   const residue = kind === 'dust' ? 8e-7 : kind === 'position' ? 0.005 : 0;
   function rows(pair) {
@@ -36,8 +35,8 @@ function harness({interval = '5', allowDust = true, kind = 'empty', signal = fal
     else if (route.startsWith('/api/v5/public/instruments')) data = [{state:'live', minSz: pair === 'BTC-EUR' ? '0.0001' : pair === 'ETH-EUR' ? '0.001' : '10',lotSz:pair === 'BTC-EUR' ? '0.00000001' : '0.000001'}];
     else if (route.startsWith('/api/v5/market/ticker')) data = [{last:String(prices[pair])}];
     else if (route.startsWith('/api/v5/market/candles')) data = rows(pair);
-    else if (route.startsWith('/api/v5/public/open-interest')) data = [{oiUsd:String(1000000*(1+(now-start)/(5*minute)*0.002)),ts:String(now)}];
-    else if (route.startsWith('/api/v5/public/funding-rate')) data = [{fundingRate:'-0.001'}];
+    else if (route.startsWith('/api/v5/public/open-interest')) data = [{instId:pair,oiUsd:String(1000000*(1+(now-start)/(5*minute)*0.002)),ts:String(now)}];
+    else if (route.startsWith('/api/v5/public/funding-rate')) data = [{instId:pair,fundingRate:'-0.001'}];
     else if (route === '/api/v5/trade/order') data = [{sCode:'0',ordId:'SIMULATED_ONLY'}];
     else throw Error('UNEXPECTED_TEST_ROUTE ' + route);
     return {ok: true, json: async () => ({ok:true,code:'0',data})};
@@ -64,6 +63,11 @@ test('five-minute candidate evaluates three times as often without forced buys',
   assert.equal(count(baseline),12);assert.equal(count(candidate),36);
   assert.equal(candidate.requests.filter(r=>r.method==='POST').length,0);
   assert.equal(candidate.logs.filter(l=>l.startsWith('ANTON_MULTI_ERROR')).length,0);
+  const derivativeRoutes=candidate.requests.filter(r=>r.route.startsWith('/api/v5/public/')).map(r=>r.route);
+  for(const instId of ['BTC-USDT-SWAP','ETH-USDT-SWAP','DOGE-USDT-SWAP']){
+    assert.ok(derivativeRoutes.some(r=>r.includes('open-interest')&&r.includes(instId)));
+    assert.ok(derivativeRoutes.some(r=>r.includes('funding-rate')&&r.includes(instId)));
+  }
 });
 test('candidate can catch a synthetic breakout between baseline checks', async () => {
   const baseline=harness({interval:'15',signal:[20]}), candidate=harness({interval:'5',signal:[20]});
