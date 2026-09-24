@@ -1,7 +1,7 @@
 "use strict";
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {extract,tick,readFeed}=require('./political-shadow');
+const {extract,tick,readFeed,summarize}=require('./political-shadow');
 const now=Date.parse('2026-09-19T06:00:00Z');
 const rss=(title,date='Sat, 19 Sep 2026 05:45:00 GMT')=>`<rss version="2.0"><channel><item><title><![CDATA[${title}]]></title><pubDate>${date}</pubDate></item></channel></rss>`;
 test('classifies attributed headlines without making trade recommendations',()=>{
@@ -30,4 +30,14 @@ test('news HTTP failure fails closed',async()=>{
  const logs=[];
  const result=await tick(async()=>({ok:false,status:429}),s=>logs.push(s),now);
  assert.equal(result.ok,false);assert.ok(logs.some(s=>s.includes('"feedHealthy":false')));
+});
+
+test('summarizes political context without inventing a trade direction',()=>{
+ const items=extract(rss('Trump comments on Bitcoin tariffs'),now);
+ const state=summarize(items,now);
+ assert.equal(state.feedHealthy,true);
+ assert.equal(state.matching,1);
+ assert.equal(state.subjectCounts.CRYPTO,1);
+ assert.equal(state.subjectCounts.TRADE,1);
+ assert.equal('tradeSignal' in state,false);
 });
