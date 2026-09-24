@@ -1,5 +1,6 @@
 "use strict";
 const test=require('node:test'),assert=require('node:assert/strict');
+process.env.POLITICAL_SHADOW_ENABLED='false';
 const {compute,chooseSignal,validatePoliticalState,politicalAdjustment}=require('./market-strategy');
 const time=Date.UTC(2026,8,18,5,0,0);
 function fixture({ethStale=false,oi='1000000',funding='0',vol=100,rise=false}={}){
