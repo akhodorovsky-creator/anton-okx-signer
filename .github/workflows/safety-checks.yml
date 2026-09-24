@@ -4,6 +4,7 @@ on:
     branches:
       - main
       - fix/**
+      - backup/autonomous-live-trading-*
   pull_request:
   workflow_dispatch:
 permissions:
@@ -16,6 +17,26 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Verify autonomous trading guards
+        run: |
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const source=fs.readFileSync('multi-live.js','utf8');
+          const launcher=fs.readFileSync('eur-order-cap-launcher.js','utf8');
+          const guards=[
+            "const LIVE=process.env.MULTI_SPOT_LIVE==='true';",
+            "if(book.exposureEur+MAX_ORDER>CAP_EUR||book.availableEur<MAX_ORDER)continue;",
+            "MULTI_COORDINATOR_OWNS_ALL_TRADING",
+            "MAX_ORDER=Math.min(20",
+            "requested>20",
+            "'BTC-EUR':'BTC-USDT-SWAP'",
+            "'ETH-EUR':'ETH-USDT-SWAP'",
+            "'DOGE-EUR':'DOGE-USDT-SWAP'",
+            "const {oi,funding}=derivatives[p.pair]"
+          ];
+          for(const guard of guards)if(!source.includes(guard))throw Error('MISSING_TRADING_GUARD: '+guard);
+          if(/SOURCE_PATCH_MISMATCH|_compile\(|vm\.Script|split\(before\)/.test(launcher))throw Error('RUNTIME_PATCHER_STILL_PRESENT');
+          NODE
       - run: npm run check
       - run: npm test
       - run: node eur-order-cap-launcher.js --verify
