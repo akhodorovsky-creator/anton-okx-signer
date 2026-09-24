@@ -12,7 +12,9 @@ function dustEnabled(raw) {
 }
 // A fast loop must not silently change the derivative feature to a 5-minute delta.
 // Keep only samples that were actually observed, with a bounded 15-minute window.
-function observeOi(state, row, now) {
+function observeOi(state, row, now, expectedInstId) {
+  if (expectedInstId && String(row?.instId || '') !== String(expectedInstId))
+    return {ready: false, reason: 'OI_INSTRUMENT_MISMATCH'};
   const oi = Number(row?.oiUsd ?? row?.oi), ts = Number(row?.ts);
   if (!(oi > 0) || !Number.isFinite(oi) || !Number.isFinite(ts) ||
       !Number.isFinite(now) || ts > now + MINUTE || now - ts > MINUTE)
