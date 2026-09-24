@@ -41,14 +41,15 @@ test('only reconciled sub-lot residue permits an opt-in new entry', () => {
   assert.equal(entryBlock({...p, qty: 0.01, free: 0.01}, true), 'POSITION_ALREADY_OPEN');
   assert.equal(entryBlock({...p, qty: NaN}, true), 'POSITION_UNVERIFIED');
 });
-test('faster observations retain a fifteen-minute OI comparison', () => {
-  const state = {}, start = 1800000000000;
-  for (let i = 0; i < 3; i++) assert.equal(observeOi(state, {oi: 1000 + i, ts: start + i * 5 * MINUTE}, start + i * 5 * MINUTE).ready, false);
-  const r = observeOi(state, {oi: 1100, ts: start + 15 * MINUTE}, start + 15 * MINUTE);
+test('faster observations retain a per-instrument fifteen-minute OI comparison', () => {
+  const state = {}, start = 1800000000000, instId='ETH-USDT-SWAP';
+  for (let i = 0; i < 3; i++) assert.equal(observeOi(state, {instId,oi: 1000 + i, ts: start + i * 5 * MINUTE}, start + i * 5 * MINUTE, instId).ready, false);
+  const r = observeOi(state, {instId,oi: 1100, ts: start + 15 * MINUTE}, start + 15 * MINUTE, instId);
   assert.deepEqual(r, {ready: true, prior: 1000, lookbackMs: 15 * MINUTE});
-  const next = observeOi(state, {oi: 1200, ts: start + 20 * MINUTE}, start + 20 * MINUTE);
+  const next = observeOi(state, {instId,oi: 1200, ts: start + 20 * MINUTE}, start + 20 * MINUTE, instId);
   assert.equal(next.prior, 1001);
-  assert.equal(observeOi(state, {oi: 1200, ts: start + 20 * MINUTE}, start + 20 * MINUTE).ready, false);
+  assert.equal(observeOi(state, {instId,oi: 1200, ts: start + 20 * MINUTE}, start + 20 * MINUTE, instId).ready, false);
+  assert.deepEqual(observeOi(state,{instId:'BTC-USDT-SWAP',oi:1300,ts:start+25*MINUTE},start+25*MINUTE,instId),{ready:false,reason:'OI_INSTRUMENT_MISMATCH'});
 });
 test('stale, missing, future and excessively old reference samples cannot create OI signals', () => {
   const now = 1800000000000;
