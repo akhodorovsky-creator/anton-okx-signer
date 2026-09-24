@@ -3,29 +3,32 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
-const {prepare}=require('./eur-order-cap-launcher');
+const {verifySource}=require('./trading-guard-source-check');
 const {monitorPosition}=require('./risk-monitor');
-// Validate the coordinator that startup patches; avoid a stale copy of its source.
+// Validate the exact coordinator source used by startup.
 const baseline=fs.readFileSync(path.join(__dirname,'multi-live.js'),'utf8');
-test('runtime patch raises max order consistently and disables legacy /auto',()=>{
-  const result=prepare(baseline);
-  assert.match(result,/MAX_ORDER=Math.min\(20/);
-  assert.match(result,/requested>20/);
-  assert.match(result,/MULTI_COORDINATOR_OWNS_ALL_TRADING/);
-  assert.match(result,/ANTON_MULTI_EXIT_BLOCKED.*JSON\.stringify/);
-  assert.match(result,/ANTON_MULTI_DUST/);
-  assert.match(result,/reportedDust\.has/);
-  assert.match(result,/p\.dust\?'Технический остаток'/);
-  assert.match(result,/isReconciledDust\(p\)/);
-  assert.doesNotMatch(result,/MAX_ORDER>5/);
+test('native coordinator carries the 20 EUR cap, legacy /auto block and dust guards',()=>{
+  assert.match(baseline,/function maxOrderEur\(raw\)/);
+  assert.match(baseline,/value<1\|\|value>20/);
+  assert.match(baseline,/requested>20/);
+  assert.match(baseline,/MULTI_COORDINATOR_OWNS_ALL_TRADING/);
+  assert.match(baseline,/ANTON_MULTI_EXIT_BLOCKED.*JSON\.stringify/);
+  assert.match(baseline,/ANTON_MULTI_DUST/);
+  assert.match(baseline,/reportedDust\.has/);
+  assert.match(baseline,/p\.dust\?'Технический остаток'/);
+  assert.match(baseline,/isReconciledDust\(p\)/);
+  assert.doesNotMatch(baseline,/requested>5/);
+  assert.equal(verifySource(baseline),true);
 });
-test('patch fails closed when upstream source changes unexpectedly',()=>{
-  assert.throws(()=>prepare(baseline.replace('requested>5','requested>6')),/SOURCE_PATCH_MISMATCH/);
+test('static guard check fails closed when the order-limit guard changes',()=>{
+  const changed=baseline.replace("if(!(MAX_ORDER>0)||MAX_ORDER>20)throw Error('ORDER_LIMIT_UNSAFE');","if(!(MAX_ORDER>0)||MAX_ORDER>21)throw Error('ORDER_LIMIT_UNSAFE');");
+  assert.notEqual(changed,baseline);
+  assert.throws(()=>verifySource(changed),/TRADING_GUARD_SOURCE_MISMATCH/);
 });
-test('patch still rejects a missing capital exposure guard',()=>{
+test('static guard check rejects a missing capital exposure guard',()=>{
   const changed=baseline.replace('book.exposureEur+MAX_ORDER>CAP_EUR','false');
   assert.notEqual(changed,baseline);
-  assert.throws(()=>prepare(changed),/TRADING_GUARD_SOURCE_MISMATCH/);
+  assert.throws(()=>verifySource(changed),/TRADING_GUARD_SOURCE_MISMATCH/);
 });
 test('multi-pair legacy monitor never posts /auto',async()=>{
   const previous=process.env.MULTI_SPOT_LIVE;
