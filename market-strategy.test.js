@@ -22,20 +22,14 @@ test('flat signal and funding alone cannot force trade',()=>{
   assert.equal(chooseSignal({score:0.45,technical:0.45,ema20:102,ema50:100,ret5:0.01,volRatio:1.0}),'HOLD');
   assert.equal(chooseSignal({score:0.8,technical:0.45,ema20:102,ema50:100,ret5:0.01,volRatio:1.0}),'HOLD');
   assert.equal(chooseSignal({score:-0.8,technical:-0.45,ema20:98,ema50:100,ret5:-0.01,volRatio:1.0}),'HOLD');
+  const valid={feedHealthy:true,matching:2,subjectCounts:{CRYPTO:1,TRADE:1,GEOPOLITICS:0},at:new Date(time).toISOString()};
+  assert.equal(validatePoliticalState(valid,time).verified,true);
+  assert.equal(validatePoliticalState({...valid,at:new Date(time-21*60_000).toISOString()},time).verified,false);
+  assert.equal(validatePoliticalState({...valid,feedHealthy:false},time).verified,false);
+  const context={enabled:true,verified:true,matching:3,subjectCounts:{CRYPTO:1,TRADE:1,GEOPOLITICS:1}};
+  const up=politicalAdjustment(context,{ret5:0.3,volRatio:1.8});
+  const down=politicalAdjustment(context,{ret5:-0.3,volRatio:1.8});
+  assert.ok(up>0&&up<=0.12);assert.ok(down<0&&down>=-0.12);
+  assert.equal(politicalAdjustment(context,{ret5:0.3,volRatio:1.1}),0);
 });
 test('old strong signal stays valid',()=>{assert.equal(chooseSignal({score:0.95,technical:0.45,ema20:102,ema50:100,ret5:0,volRatio:1}),'BUY')});
-
-test('political context is fail-closed when stale or malformed',()=>{
- const valid={feedHealthy:true,matching:2,subjectCounts:{CRYPTO:1,TRADE:1,GEOPOLITICS:0},at:new Date(time).toISOString()};
- assert.equal(validatePoliticalState(valid,time).verified,true);
- assert.equal(validatePoliticalState({...valid,at:new Date(time-21*60_000).toISOString()},time).verified,false);
- assert.equal(validatePoliticalState({...valid,feedHealthy:false},time).verified,false);
-});
-test('political context follows confirmed market reaction, not politician identity',()=>{
- const context={enabled:true,verified:true,matching:3,subjectCounts:{CRYPTO:1,TRADE:1,GEOPOLITICS:1}};
- const up=politicalAdjustment(context,{ret5:0.3,volRatio:1.8});
- const down=politicalAdjustment(context,{ret5:-0.3,volRatio:1.8});
- assert.ok(up>0&&up<=0.12);
- assert.ok(down<0&&down>=-0.12);
- assert.equal(politicalAdjustment(context,{ret5:0.3,volRatio:1.1}),0);
-});
