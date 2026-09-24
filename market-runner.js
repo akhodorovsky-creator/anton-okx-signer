@@ -65,7 +65,7 @@ async function tick(){
       publicJson('/api/v5/public/open-interest?instType=SWAP&instId=BTC-USDT-SWAP'),
       publicJson('/api/v5/public/funding-rate?instId=BTC-USDT-SWAP')
     ]);
-    const d=compute({btc,eth,oi,funding},state);
+    const d=compute({btc,eth,oi,funding,derivativeInstId:'BTC-USDT-SWAP'},state);
     const oiValue=Number(oi.data?.[0]?.oiUsd??oi.data?.[0]?.oi);
     if(d.marketInputsFresh&&Number.isFinite(oiValue)&&oiValue>0)state.lastOi=oiValue;
     console.log('ANTON_MARKET_SIGNAL '+JSON.stringify(d));
