@@ -26,9 +26,12 @@ function compute(market,state={},now=Date.now()){
   const out={signal:'HOLD',actionable:false,score:null,reasons:[],marketInputsFresh:false,instrument:'BTC-EUR',strategy:'market-only-v1.1',timestamp:new Date(now).toISOString()};
   let btc,eth;
   try{btc=candles(market.btc,now);eth=candles(market.eth,now);}catch(e){out.reasons.push(e.message);return out;}
-  const oi=number(market.oi?.data?.[0]?.oiUsd??market.oi?.data?.[0]?.oi);
-  const funding=number(market.funding?.data?.[0]?.fundingRate);
-  const oiTs=number(market.oi?.data?.[0]?.ts);
+  const oiRow=market.oi?.data?.[0], fundingRow=market.funding?.data?.[0];
+  const oi=number(oiRow?.oiUsd??oiRow?.oi);
+  const funding=number(fundingRow?.fundingRate);
+  const oiTs=number(oiRow?.ts);
+  const derivativeInstId=String(market.derivativeInstId||'');
+  if(derivativeInstId&&(String(oiRow?.instId||'')!==derivativeInstId||String(fundingRow?.instId||'')!==derivativeInstId)){out.reasons.push('DERIVATIVES_INSTRUMENT_MISMATCH');return out;}
   if(market.oi?.code!=='0'||market.funding?.code!=='0'||!(oi>0)||!Number.isFinite(funding)||!Number.isFinite(oiTs)||oiTs>now+60_000||now-oiTs>15*60_000){out.reasons.push('DERIVATIVES_DATA_UNAVAILABLE');return out;}
   out.marketInputsFresh=true;
   const close=btc.map(x=>x.close),price=close.at(-1),prev=close.at(-2);
