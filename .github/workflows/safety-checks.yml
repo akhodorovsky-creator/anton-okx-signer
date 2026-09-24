@@ -4,6 +4,7 @@ on:
     branches:
       - main
       - fix/**
+      - backup/autonomous-live-trading-20260923
   pull_request:
   workflow_dispatch:
 permissions:
@@ -18,4 +19,4 @@ jobs:
           node-version: '22'
       - run: npm run check
       - run: npm test
-      - run: node eur-order-cap-launcher.js --verify
+      - run: node trading-guard-source-check.js
