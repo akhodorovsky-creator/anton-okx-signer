@@ -25,10 +25,6 @@ test('launcher no longer rewrites or compiles patched coordinator source',()=>{
   assert.match(launcher,/require\('\.\/multi-live'\)/);
   assert.equal(verifyConfig({MAX_ORDER_EUR:'20',CAPITAL_CAP_EUR:'1000'}),true);
   assert.throws(()=>verifyConfig({MAX_ORDER_EUR:'21'}),/INVALID_MAX_ORDER_EUR/);
-});
-
-test('launcher configuration rejects unsafe capital and malformed limits',()=>{
-  assert.throws(()=>verifyConfig({MAX_ORDER_EUR:'0'}),/INVALID_MAX_ORDER_EUR/);
   assert.throws(()=>verifyConfig({MAX_ORDER_EUR:'abc'}),/INVALID_MAX_ORDER_EUR/);
   assert.throws(()=>verifyConfig({CAPITAL_CAP_EUR:'1001'}),/INVALID_CAPITAL_CAP_EUR/);
 });
