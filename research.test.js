@@ -3,7 +3,7 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {CONFIG,HOUR,features,decision,initialState,step,summary}=require('./engine');
 const {readPublic,snapshot}=require('./public-market');
-const {restore,persist,processObservation}=require('./paper');
+const {restore,persist}=require('./paper');
 const T=Date.parse('2026-01-01T00:00:00Z');
 function bars(n=300) {return Array.from({length:n},(_,i)=>({timestamp:T+i*HOUR,open:100,high:101,low:99,close:100,volume:100}));}
 function snap(t=T,close=100) {return Object.fromEntries(CONFIG.pairs.map(p=>[p,{timestamp:t,ready:true,close,low:close-1,ema20:close,ema50:95,ema200:90,ema50SixHoursAgo:94,atr:2,return24:0.03,rsi:60,volumeRatio:2,high24:close-1,previousLow:98,previousClose:99,previousEma20:100}]));}
@@ -60,20 +60,20 @@ test('public client uses GET without auth and refuses redirects',async()=>{
   });
   assert.equal(options.method,'GET');assert.equal(options.redirect,'error');assert.equal(options.headers.authorization,undefined);
 });
-test('late boot observes without retroactive entries; state survives ordinary restart',()=>{
+test('automatic paper state survives ordinary restart and resets when storage is removed',()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'anton-paper-test-')),file=path.join(dir,'state.json');
   try{
-    const store=restore(file),now=T+HOUR+10*60000;
-    processObservation(store,{venue:'OKX_PUBLIC_EUR',observedAt:now,snapshot:snap(),quotes:quotes()},now);
-    assert.ok(store.states.every(s=>s.entries===0));persist(store,file);
-    assert.deepEqual(restore(file),store);
-    const epoch=store.epoch;fs.unlinkSync(file);assert.notEqual(restore(file).epoch,epoch);
+    const store=restore(file);assert.equal(store.mode,'PAPER_AUTO_15M');assert.equal(store.cashEur,300);
+    store.cashEur=280;persist(store,file);assert.equal(restore(file).cashEur,280);
+    fs.unlinkSync(file);const reset=restore(file);assert.equal(reset.mode,'PAPER_AUTO_15M');assert.equal(reset.cashEur,300);
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
-test('paper runner refuses stale observations and venue mixing',()=>{
-  const store={states:CONFIG.candidates.map(x=>initialState(x))};
-  assert.throws(()=>processObservation(store,{venue:'BINANCE',observedAt:T},T),/VENUE/);
-  assert.throws(()=>processObservation(store,{venue:'OKX_PUBLIC_EUR',observedAt:T},T+61000),/STALE_OBSERVATION/);
+test('automatic paper restore rejects incompatible live-like state',()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'anton-paper-test-')),file=path.join(dir,'state.json');
+  try{
+    fs.writeFileSync(file,JSON.stringify({version:2,mode:'LIVE',cashEur:999,positions:{},signalStates:{}}));
+    const store=restore(file);assert.equal(store.mode,'PAPER_AUTO_15M');assert.equal(store.cashEur,300);
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 test('paper state cannot be switched into live mode',()=>{
   const state=initialState('momentum24');state.mode='LIVE';assert.throws(()=>step(state,snap(),quotes(),T+HOUR),/PAPER_ONLY/);
