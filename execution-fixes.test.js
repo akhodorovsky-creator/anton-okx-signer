@@ -27,6 +27,12 @@ test('launcher no longer rewrites or compiles patched coordinator source',()=>{
   assert.throws(()=>verifyConfig({MAX_ORDER_EUR:'21'}),/INVALID_MAX_ORDER_EUR/);
 });
 
+test('launcher configuration rejects unsafe capital and malformed limits',()=>{
+  assert.throws(()=>verifyConfig({MAX_ORDER_EUR:'0'}),/INVALID_MAX_ORDER_EUR/);
+  assert.throws(()=>verifyConfig({MAX_ORDER_EUR:'abc'}),/INVALID_MAX_ORDER_EUR/);
+  assert.throws(()=>verifyConfig({CAPITAL_CAP_EUR:'1001'}),/INVALID_CAPITAL_CAP_EUR/);
+});
+
 test('coordinator retains capital exposure guard and pair-specific derivatives',()=>{
   assert.match(coordinator,/book\.exposureEur\+MAX_ORDER>CAP_EUR\|\|book\.availableEur<MAX_ORDER/);
   assert.match(coordinator,/'ETH-EUR':'ETH-USDT-SWAP'/);
