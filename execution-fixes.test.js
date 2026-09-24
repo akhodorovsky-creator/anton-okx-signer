@@ -3,30 +3,37 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
-const {prepare}=require('./eur-order-cap-launcher');
+const {verifyConfig}=require('./eur-order-cap-launcher');
 const {monitorPosition}=require('./risk-monitor');
-// Validate the coordinator that startup patches; avoid a stale copy of its source.
-const baseline=fs.readFileSync(path.join(__dirname,'multi-live.js'),'utf8');
-test('runtime patch raises max order consistently and disables legacy /auto',()=>{
-  const result=prepare(baseline);
-  assert.match(result,/MAX_ORDER=Math.min\(20/);
-  assert.match(result,/requested>20/);
-  assert.match(result,/MULTI_COORDINATOR_OWNS_ALL_TRADING/);
-  assert.match(result,/ANTON_MULTI_EXIT_BLOCKED.*JSON\.stringify/);
-  assert.match(result,/ANTON_MULTI_DUST/);
-  assert.match(result,/reportedDust\.has/);
-  assert.match(result,/p\.dust\?'Технический остаток'/);
-  assert.match(result,/isReconciledDust\(p\)/);
-  assert.doesNotMatch(result,/MAX_ORDER>5/);
+const coordinator=fs.readFileSync(path.join(__dirname,'multi-live.js'),'utf8');
+const launcher=fs.readFileSync(path.join(__dirname,'eur-order-cap-launcher.js'),'utf8');
+
+test('canonical coordinator owns order cap, legacy /auto block and dust handling',()=>{
+  assert.match(coordinator,/MAX_ORDER=Math\.min\(20/);
+  assert.match(coordinator,/requested>20/);
+  assert.match(coordinator,/MULTI_COORDINATOR_OWNS_ALL_TRADING/);
+  assert.match(coordinator,/ANTON_MULTI_EXIT_BLOCKED.*JSON\.stringify/);
+  assert.match(coordinator,/ANTON_MULTI_DUST/);
+  assert.match(coordinator,/reportedDust\.has/);
+  assert.match(coordinator,/p\.dust\?'Технический остаток'/);
+  assert.match(coordinator,/isReconciledDust\(p\)/);
+  assert.doesNotMatch(coordinator,/MAX_ORDER>5/);
 });
-test('patch fails closed when upstream source changes unexpectedly',()=>{
-  assert.throws(()=>prepare(baseline.replace('requested>5','requested>6')),/SOURCE_PATCH_MISMATCH/);
+
+test('launcher no longer rewrites or compiles patched coordinator source',()=>{
+  assert.doesNotMatch(launcher,/SOURCE_PATCH_MISMATCH|_compile\(|vm\.Script|split\(before\)/);
+  assert.match(launcher,/require\('\.\/multi-live'\)/);
+  assert.equal(verifyConfig({MAX_ORDER_EUR:'20',CAPITAL_CAP_EUR:'1000'}),true);
+  assert.throws(()=>verifyConfig({MAX_ORDER_EUR:'21'}),/INVALID_MAX_ORDER_EUR/);
 });
-test('patch still rejects a missing capital exposure guard',()=>{
-  const changed=baseline.replace('book.exposureEur+MAX_ORDER>CAP_EUR','false');
-  assert.notEqual(changed,baseline);
-  assert.throws(()=>prepare(changed),/TRADING_GUARD_SOURCE_MISMATCH/);
+
+test('coordinator retains capital exposure guard and pair-specific derivatives',()=>{
+  assert.match(coordinator,/book\.exposureEur\+MAX_ORDER>CAP_EUR\|\|book\.availableEur<MAX_ORDER/);
+  assert.match(coordinator,/'ETH-EUR':'ETH-USDT-SWAP'/);
+  assert.match(coordinator,/'DOGE-EUR':'DOGE-USDT-SWAP'/);
+  assert.match(coordinator,/const \{oi,funding\}=derivatives\[p\.pair\]/);
 });
+
 test('multi-pair legacy monitor never posts /auto',async()=>{
   const previous=process.env.MULTI_SPOT_LIVE;
   process.env.MULTI_SPOT_LIVE='true';
