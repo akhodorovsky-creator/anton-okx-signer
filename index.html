@@ -1,26 +1,45 @@
 <!doctype html>
 <html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ANTON — проверка стратегий</title>
+<title>ANTON Paper Auto</title>
 <style>
-:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#10171d;color:#e9eef1;font:16px/1.55 system-ui,sans-serif}main{max-width:960px;margin:auto;padding:32px 20px 60px}h1{font-size:clamp(27px,5vw,42px);line-height:1.15;margin:15px 0}.label{display:inline-block;background:#193d36;color:#a6e6ce;border:1px solid #3f7361;border-radius:20px;padding:5px 12px;font-size:13px;font-weight:700}.muted{color:#a6b5be}.note{border-left:3px solid #d5b778;padding:12px 18px;background:#1e242a;margin:24px 0}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:16px}.card{padding:22px;border:1px solid #34434e;border-radius:14px;background:#18232c}.card h2{font-size:19px;margin:0}.pnl{font-size:36px;letter-spacing:-1px;margin:12px 0}.row{display:flex;justify-content:space-between;margin-top:7px;font-size:14px}.status{color:#bbd1c0}footer{margin-top:28px;font-size:13px;color:#a6b5be}#error{color:#f0ae9f}a{color:#a6e6ce}
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#0f151b;color:#eef3f6;font:15px/1.5 system-ui,sans-serif}main{max-width:980px;margin:auto;padding:28px 18px 50px}h1{margin:8px 0 4px;font-size:32px}.tag{display:inline-block;padding:5px 10px;border:1px solid #49635b;border-radius:18px;color:#b8e4d2;background:#15241f;font-weight:700;font-size:12px}.muted{color:#9fb0ba}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:20px 0}.card{background:#17212a;border:1px solid #34434e;border-radius:13px;padding:16px}.v{font-size:24px;font-weight:750;margin-top:4px}.good{color:#9fe0bd}.bad{color:#f0a29a}table{width:100%;border-collapse:collapse;background:#17212a;border:1px solid #34434e;border-radius:13px;overflow:hidden}th,td{padding:10px;border-bottom:1px solid #2c3943;text-align:left;font-size:13px}th{color:#a9bac4}#error{color:#f0a29a}.note{padding:12px 14px;background:#1b232b;border-left:3px solid #b7a269;margin:16px 0}
 </style><main>
-<span class="label">PAPER · ТОЛЬКО ВИРТУАЛЬНЫЕ СДЕЛКИ</span>
-<h1>ANTON: проверяем идеи</h1>
-<p class="muted">Три стратегии наблюдают за BTC, ETH и DOGE в евро. Каждая моделирует отдельные 300 €, до 20 € на покупку и до 60 € одновременно.</p>
-<div class="note"><strong>Прибыльность не подтверждена.</strong> Все три варианта завершили историческую проверку с убытком после расходов. Эта страница собирает новые наблюдения; доступа к биржевому счёту и реальным ордерам у неё нет.</div>
-<p id="error"></p><section class="cards" id="cards"><p>Ожидаем первый расчёт…</p></section>
-<footer><p id="updated">Загрузка состояния…</p><p>Источник текущих наблюдений: публичные котировки OKX, EUR. Историческая проверка использовала Binance EUR. Все результаты здесь — виртуальные. В расчёте: комиссия 0,35% на сторону и дополнительное проскальзывание 0,10%. Новые сигналы — по закрытым часовым свечам.</p><p>Учёт идёт с начала указанного сеанса. При замене сервера виртуальный счёт может начать новый сеанс. Рабочий бот OKX существует отдельно.</p></footer>
-</main><script>
-const names={breakout24:'Пробой за 24 часа',pullback20:'Возврат после отката',momentum24:'Суточный импульс'};
-const money=x=>new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR'}).format(x);
-function text(tag,value,className){const el=document.createElement(tag);el.textContent=value;if(className)el.className=className;return el;}
-async function refresh(){try{const r=await fetch('/status',{cache:'no-store'});if(!r.ok)throw Error('Сервис временно недоступен');const d=await r.json();
-document.getElementById('error').textContent=d.lastError?'Котировки временно недоступны; новые операции не рассчитываются.':'';
-const observation=d.lastObservation,rows=observation?.snapshots||[];
-if(rows.length){const cards=document.getElementById('cards');cards.replaceChildren();for(const s of rows){const c=text('article','','card');c.append(text('h2',names[s.candidate]||s.candidate),text('div',money(s.pnlEur),'pnl'));
-for(const [label,value] of [['Открытых позиций',s.openPositions],['Закрытых сделок',s.closedTrades],['Модельные комиссии',money(s.feesPaidEur)],['Макс. просадка',money(s.maxDrawdownEur)]]){const row=text('div','','row');row.append(text('span',label),text('strong',value));c.append(row);}
-c.append(text('p',s.entryHalted?'Входы остановлены лимитом просадки':s.openPositions?'Сопровождаем виртуальные позиции':'Ожидаем условия входа','status'));cards.append(c);}}
-document.getElementById('updated').textContent='Начало сеанса: '+new Date(d.createdAt).toLocaleString('ru-RU')+(observation?' · Последний расчёт: '+new Date(observation.at).toLocaleString('ru-RU'):'');
-}catch(e){document.getElementById('error').textContent=e.message;}}
+<span class="tag">PAPER ONLY · АВТОМАТИЧЕСКИ</span>
+<h1>ANTON Paper Auto</h1>
+<p class="muted">Виртуальный капитал 300 € · BTC/ETH/DOGE · 20 € на вход · TP +5% · SL −2% · проверка каждые 15 минут.</p>
+<div class="note">Реальные ордера отключены. Сервис использует только публичные рыночные данные OKX и ведёт виртуальный счёт.</div>
+<p id="error"></p>
+<section class="grid">
+<div class="card">Капитал<div class="v" id="capital">—</div></div>
+<div class="card">Equity<div class="v" id="equity">—</div></div>
+<div class="card">P&L<div class="v" id="pnl">—</div></div>
+<div class="card">Свободно<div class="v" id="cash">—</div></div>
+<div class="card">Открыто позиций<div class="v" id="positions">—</div></div>
+<div class="card">Закрыто сделок<div class="v" id="trades">—</div></div>
+</section>
+<h2>Последние сигналы</h2>
+<table><thead><tr><th>Пара</th><th>Сигнал</th><th>Actionable</th><th>Score</th><th>Время</th></tr></thead><tbody id="signals"></tbody></table>
+<h2>Открытые позиции</h2>
+<table><thead><tr><th>Пара</th><th>Вход</th><th>Сумма</th><th>Время</th></tr></thead><tbody id="open"></tbody></table>
+<p class="muted" id="updated"></p>
+</main>
+<script>
+const eur=x=>new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR',maximumFractionDigits:2}).format(Number(x||0));
+const num=x=>x==null?'—':Number(x).toFixed(3);
+async function refresh(){
+ try{
+  const r=await fetch('/status',{cache:'no-store'});if(!r.ok)throw Error('Сервис недоступен');
+  const d=await r.json();document.getElementById('error').textContent=d.lastError?('Ошибка данных: '+d.lastError):'';
+  capital.textContent=eur(d.capitalEur);equity.textContent=eur(d.equityEur);cash.textContent=eur(d.cashEur);
+  pnl.textContent=eur(d.pnlEur);pnl.className='v '+(Number(d.pnlEur)>=0?'good':'bad');
+  positions.textContent=d.openPositions;trades.textContent=d.closedTrades;
+  const sb=document.getElementById('signals');sb.replaceChildren();
+  for(const p of ['BTC-EUR','ETH-EUR','DOGE-EUR']){const s=d.lastSignals?.[p]||{};const tr=document.createElement('tr');for(const v of [p,s.signal||'—',String(Boolean(s.actionable)),num(s.score),s.at?new Date(s.at).toLocaleString('ru-RU'):'—']){const td=document.createElement('td');td.textContent=v;tr.append(td)}sb.append(tr)}
+  const ob=document.getElementById('open');ob.replaceChildren();const entries=Object.entries(d.positions||{});
+  if(!entries.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=4;td.textContent='Нет открытых виртуальных позиций';tr.append(td);ob.append(tr)}
+  for(const [pair,p] of entries){const tr=document.createElement('tr');for(const v of [pair,eur(p.entryPrice),eur(p.spentEur),new Date(p.entryAt).toLocaleString('ru-RU')]){const td=document.createElement('td');td.textContent=v;tr.append(td)}ob.append(tr)}
+  updated.textContent='Последний расчёт: '+(d.lastTickAt?new Date(d.lastTickAt).toLocaleString('ru-RU'):'ещё не было')+' · Реальные ордера: '+(d.liveOrdersEnabled?'ВКЛ':'ВЫКЛ');
+ }catch(e){document.getElementById('error').textContent=e.message}
+}
 refresh();setInterval(refresh,30000);
 </script></html>
