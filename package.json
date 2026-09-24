@@ -2,7 +2,12 @@
   "name": "anton-paper-strategy-lab",
   "version": "0.1.0",
   "private": true,
-  "description": "Virtual EUR portfolios using public market data. No live trading capability.",
-  "scripts": {"start":"node paper.js","test":"node --test research.test.js"},
-  "engines": {"node":">=22"}
+  "description": "Automatic 15-minute paper simulation of ANTON Signal using public OKX market data only.",
+  "scripts": {
+    "start": "node paper.js",
+    "test": "node --test research.test.js paper-auto.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
 }
