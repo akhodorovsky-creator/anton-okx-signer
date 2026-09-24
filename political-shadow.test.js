@@ -8,6 +8,10 @@ test('classifies attributed headlines without making trade recommendations',()=>
  const result=extract(rss('Trump comments on Bitcoin tariffs'),now);
  assert.equal(result.length,1);assert.deepEqual(result[0].people,['TRUMP']);assert.deepEqual(result[0].subjects,['CRYPTO','TRADE']);
  assert.equal('signal' in result[0],false);assert.equal('actionable' in result[0],false);
+ const state=summarize(result,now);
+ assert.equal(state.feedHealthy,true);assert.equal(state.matching,1);
+ assert.equal(state.subjectCounts.CRYPTO,1);assert.equal(state.subjectCounts.TRADE,1);
+ assert.equal('tradeSignal' in state,false);
 });
 test('ignores stale, future, unrelated and invalid feed data',()=>{
  assert.equal(extract(rss('Elon Musk discusses crypto','Sat, 19 Sep 2026 03:45:00 GMT'),now).length,0);
@@ -30,14 +34,4 @@ test('news HTTP failure fails closed',async()=>{
  const logs=[];
  const result=await tick(async()=>({ok:false,status:429}),s=>logs.push(s),now);
  assert.equal(result.ok,false);assert.ok(logs.some(s=>s.includes('"feedHealthy":false')));
-});
-
-test('summarizes political context without inventing a trade direction',()=>{
- const items=extract(rss('Trump comments on Bitcoin tariffs'),now);
- const state=summarize(items,now);
- assert.equal(state.feedHealthy,true);
- assert.equal(state.matching,1);
- assert.equal(state.subjectCounts.CRYPTO,1);
- assert.equal(state.subjectCounts.TRADE,1);
- assert.equal('tradeSignal' in state,false);
 });
