@@ -16,7 +16,7 @@ const PORT=Number(process.env.PORT||3000),CHILD_PORT=PORT+10,SIGNER_PORT=PORT+23
 const LIVE=process.env.MULTI_SPOT_LIVE==='true';
 const APPROVAL_MODE=process.env.TELEGRAM_TRADE_APPROVAL==='true';
 const MAX_ORDER=Math.min(5,Number(process.env.MAX_ORDER_EUR||5));
-const PROPOSAL_TTL_MS=5*60_000;
+const PROPOSAL_TTL_MS=30*60_000;
 const MAX_APPROVAL_PRICE_DRIFT=.015;
 function parsePnlBaselines(raw){
   if(!raw)return Object.freeze({});
