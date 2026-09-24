@@ -1,8 +1,42 @@
 "use strict";
-// Market-only ANTON Signal: pure indicator calculation; never places orders.
+// ANTON Signal calculation; never places orders.
+const fs=require('node:fs');
 const INTERVAL = 5 * 60_000;
+const POLITICAL_MAX_AGE = 20 * 60_000;
+const POLITICAL_STATE_FILE = process.env.POLITICAL_SHADOW_STATE_FILE || '/tmp/anton-political-shadow.json';
 function number(x) { if (x == null || x === '' || typeof x === 'boolean') return NaN; const n=Number(x); return Number.isFinite(n)?n:NaN; }
 function clamp(x,a,b){return Math.max(a,Math.min(b,x));}
+function validatePoliticalState(value,now=Date.now()){
+  if(!value||Array.isArray(value)||typeof value!=='object')return{enabled:true,verified:false,reason:'POLITICAL_CONTEXT_UNVERIFIED'};
+  const at=Date.parse(value.at||'');
+  const matching=Number(value.matching);
+  const counts=value.subjectCounts;
+  if(value.feedHealthy!==true||!Number.isFinite(at)||at>now+60_000||now-at>POLITICAL_MAX_AGE||
+     !Number.isInteger(matching)||matching<0||matching>60||!counts||Array.isArray(counts)||typeof counts!=='object')
+    return{enabled:true,verified:false,reason:'POLITICAL_CONTEXT_UNVERIFIED'};
+  const subjectCounts={};
+  for(const key of ['CRYPTO','TRADE','GEOPOLITICS']){
+    const count=Number(counts[key]??0);
+    if(!Number.isInteger(count)||count<0||count>matching)return{enabled:true,verified:false,reason:'POLITICAL_CONTEXT_UNVERIFIED'};
+    subjectCounts[key]=count;
+  }
+  return{enabled:true,verified:true,matching,subjectCounts,at:new Date(at).toISOString()};
+}
+function readPoliticalContext(now=Date.now(),readFile=fs.readFileSync){
+  if(process.env.POLITICAL_SHADOW_ENABLED!=='true')return{enabled:false,verified:true,matching:0,subjectCounts:{CRYPTO:0,TRADE:0,GEOPOLITICS:0}};
+  try{return validatePoliticalState(JSON.parse(readFile(POLITICAL_STATE_FILE,'utf8')),now);}
+  catch{return{enabled:true,verified:false,reason:'POLITICAL_CONTEXT_UNVERIFIED'};}
+}
+function politicalAdjustment(context,{ret5,volRatio}){
+  if(!context?.enabled||!context.verified||context.matching===0)return 0;
+  if(!(volRatio>=1.4)||Math.abs(ret5)<0.2)return 0;
+  const c=context.subjectCounts||{};
+  const base=c.CRYPTO>0?0.10:c.TRADE>0?0.08:c.GEOPOLITICS>0?0.06:0;
+  if(base===0)return 0;
+  const density=Math.min(0.02,Math.max(0,context.matching-1)*0.005);
+  const magnitude=Math.min(0.12,base+density);
+  return ret5>0?magnitude:-magnitude;
+}
 function ema(v,p){let x=v[0],k=2/(p+1);for(let i=1;i<v.length;i++)x=v[i]*k+x*(1-k);return x;}
 function rsi(v,p=14){let g=0,l=0;for(let i=v.length-p;i<v.length;i++){let d=v[i]-v[i-1];if(d>=0)g+=d;else l-=d;}return l===0?100:100-100/(1+g/l);}
 function candles(data,now){
@@ -35,6 +69,8 @@ function compute(market,state={},now=Date.now()){
   const lastVol=btc.at(-1).volume,volAvg=btc.slice(-21,-1).reduce((s,x)=>s+x.volume,0)/20;
   if(!(volAvg>0)||!Number.isFinite(prev)||!(prev>0)){out.reasons.push('INVALID_MARKET_VOLUME');return out;}
   const ret5=(price/prev-1)*100,volRatio=lastVol/volAvg,ema20=ema(close,20),ema50=ema(close,50),rsi14=rsi(close);
+  const political=readPoliticalContext(now);
+  if(political.enabled&&!political.verified){out.reasons.push(political.reason);return out;}
   let technical=ema20>ema50?0.45:-0.45;
   if(rsi14<=38)technical+=0.45;
   if(rsi14>=62)technical-=0.45;
@@ -52,11 +88,18 @@ function compute(market,state={},now=Date.now()){
   if(funding>0.0005)flow-=0.35;
   if(funding< -0.0005)flow+=0.35;
   flow=clamp(flow,-1.2,1.2);
-  const score=technical+flow;
+  const politicalScore=politicalAdjustment(political,{ret5,volRatio});
+  const score=technical+flow+politicalScore;
   const signal=chooseSignal({score,technical,ema20,ema50,ret5,volRatio});
   const elapsed=now-number(state.lastSignalAt);
   const cooldown=signal!=='HOLD'&&state.lastSignal===signal&&Number.isFinite(elapsed)&&elapsed>=0&&elapsed<30*60_000;
-  Object.assign(out,{signal,actionable:signal!=='HOLD'&&!cooldown,score:Number(score.toFixed(3)),price,technical:Number(technical.toFixed(3)),flow:Number(flow.toFixed(3)),oiChange:Number(oiChange.toFixed(3)),rsi14:Number(rsi14.toFixed(2)),btcCandleAt:new Date(btc.at(-1).ts).toISOString(),ethCandleAt:new Date(eth.at(-1).ts).toISOString(),ret5:Number(ret5.toFixed(3)),volRatio:Number(volRatio.toFixed(3))});
-  out.reasons.push(cooldown?'COOLDOWN':'MARKET_ONLY');return out;
+  Object.assign(out,{signal,actionable:signal!=='HOLD'&&!cooldown,score:Number(score.toFixed(3)),price,technical:Number(technical.toFixed(3)),flow:Number(flow.toFixed(3)),politicalScore:Number(politicalScore.toFixed(3)),politicalMatching:political.matching,oiChange:Number(oiChange.toFixed(3)),rsi14:Number(rsi14.toFixed(2)),btcCandleAt:new Date(btc.at(-1).ts).toISOString(),ethCandleAt:new Date(eth.at(-1).ts).toISOString(),ret5:Number(ret5.toFixed(3)),volRatio:Number(volRatio.toFixed(3))});
+  if(political.enabled){
+    if(political.matching===0)out.reasons.push('POLITICAL_NO_RECENT_EVENT');
+    else if(politicalScore>0)out.reasons.push('POLITICAL_MARKET_CONFIRMED_UP');
+    else if(politicalScore<0)out.reasons.push('POLITICAL_MARKET_CONFIRMED_DOWN');
+    else out.reasons.push('POLITICAL_EVENT_NO_CONFIRMED_REACTION');
+  }
+  out.reasons.push(cooldown?'COOLDOWN':'MARKET_PLUS_POLITICAL');return out;
 }
-module.exports={candles,compute,chooseSignal};
+module.exports={candles,compute,chooseSignal,validatePoliticalState,readPoliticalContext,politicalAdjustment};
