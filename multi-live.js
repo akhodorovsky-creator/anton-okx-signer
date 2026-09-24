@@ -87,7 +87,7 @@ async function tick(){
   if(busy||uncertain||!LIVE)return;
   busy=true;
   try{
-    if(!(MAX_ORDER>0)||MAX_ORDER>5)throw Error('ORDER_LIMIT_UNSAFE');
+    if(!(MAX_ORDER>0)||MAX_ORDER>20)throw Error('ORDER_LIMIT_UNSAFE');
     const book=await portfolio();
     if(book.pairs.some(p=>p.pending))throw Error('BOT_ORDER_PENDING');
     let exited=false;
