@@ -83,14 +83,14 @@ TELEGRAM_TRADE_APPROVAL exists in the current Railway environment because produc
 - Keep a rollback branch before deployment.
 - Never place API keys, passphrases, Telegram tokens or dashboard/signing tokens into the public GitHub repository.
 
-## Autonomous hardening in progress (2026-09-24)
+## Autonomous hardening verified (2026-09-24)
 The autonomous branch now carries the safety cleanup directly in source code:
 - multi-live.js is the canonical coordinator; the launcher no longer rewrites it at runtime.
 - MAX_ORDER_EUR is capped at 20 EUR in canonical source; CAPITAL_CAP_EUR remains capped at 1000 EUR.
 - legacy POST /auto is blocked while MULTI_SPOT_LIVE=true.
 - reconciled dust handling/display lives directly in multi-live.js.
 - BTC-EUR, ETH-EUR and DOGE-EUR use their own BTC-USDT-SWAP, ETH-USDT-SWAP and DOGE-USDT-SWAP open-interest/funding feeds.
-- The GitHub safety workflow is being extended to protect this backup/autonomous branch and must pass before any Railway switch/deploy.
+- The GitHub safety workflow protects this backup/autonomous branch. Verification at code commit `3bdaffab270e0701ca5d7de0aa16109293047b56`: guard check PASS, `npm run check` PASS, `npm test` PASS with exactly 56/56 tests, launcher verification PASS. Any later commit must pass the same gate before Railway switch/deploy.
 
 ## Current repository note
 The default main branch is newer and contains Telegram trade-approval behavior. This backup branch is intentionally isolated so the autonomous version cannot be lost.
