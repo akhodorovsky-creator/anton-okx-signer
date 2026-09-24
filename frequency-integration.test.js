@@ -3,14 +3,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const {prepare} = require('./eur-order-cap-launcher');
 const minute = 60000;
 const start = Date.UTC(2026, 8, 22, 0, 0);
-// Execute the exact production-patched coordinator with an entirely fake clock,
+// Execute the exact canonical coordinator with an entirely fake clock,
 // exchange and HTTP stack. There is no network and no child-process execution.
 function harness({interval = '5', allowDust = true, kind = 'empty', signal = false, pending = false, stale = false} = {}) {
   let now = start, requests = [], logs = [], scheduled = null;
-  const source = prepare(fs.readFileSync(require.resolve('./multi-live'), 'utf8'));
+  const source = fs.readFileSync(require.resolve('./multi-live'), 'utf8');
   const prices = {'BTC-EUR': 65000, 'ETH-EUR': 3000, 'DOGE-EUR': 0.15};
   const residue = kind === 'dust' ? 8e-7 : kind === 'position' ? 0.005 : 0;
   function rows(pair) {
