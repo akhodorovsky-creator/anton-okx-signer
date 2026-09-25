@@ -1,8 +1,8 @@
 {
   "name": "anton-okx-signer",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
-  "description": "Guarded OKX EUR spot bot with BTC daily regime v2 and 20 EUR per-order cap",
+  "description": "Guarded OKX EUR spot bot with BTC daily regime and 15% volatility-targeted exposure",
   "main": "multi-live.js",
   "scripts": {
     "start": "npm run check && npm test && node eur-order-cap-launcher.js --verify && sh -c 'node political-shadow.js & node preflight.js & node fill-audit-runner.js & node telegram-bot.js & exec node eur-order-cap-launcher.js'",
