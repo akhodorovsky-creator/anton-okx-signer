@@ -1,6 +1,7 @@
 "use strict";
 const test=require('node:test');
 const assert=require('node:assert/strict');
+const fs=require('node:fs');
 const {PAIRS,ledger,reportLedger,applyPnlBaseline,parsePnlBaselines,uniqueOrders,orderSize,sellSize,page}=require('./multi-live');
 const buy={ordId:'1',clOrdId:'ANTON1',instId:'ETH-EUR',side:'buy',accFillSz:'0.01',avgPx:'3000',fee:'-0.00001',feeCcy:'ETH',cTime:'100'};
 const sell={ordId:'2',clOrdId:'ANTON2',instId:'ETH-EUR',side:'sell',accFillSz:'0.005',avgPx:'3300',fee:'-0.02',feeCcy:'EUR',cTime:'200'};
@@ -24,4 +25,12 @@ test('P&L baseline config is strict and pair-scoped',()=>{
   assert.throws(()=>parsePnlBaselines('{"SOL-EUR":1}'),/UNKNOWN_PNL_BASELINE_PAIR/);
   assert.throws(()=>parsePnlBaselines('{"BTC-EUR":"x"}'),/INVALID_PNL_BASELINE_VALUE/);
   assert.throws(()=>parsePnlBaselines('{bad'),/INVALID_PNL_BASELINES_JSON/);
+});
+
+test('live coordinator consumes political gate without changing order cap or exit rules',()=>{
+  const source=fs.readFileSync('multi-live.js','utf8');
+  assert.match(source,/getPoliticalLiveGate/);
+  assert.match(source,/POLITICAL_6H_FILL_COOLDOWN/);
+  assert.match(source,/BTC_DAILY_REGIME_EXIT/);
+  assert.match(source,/MAX_ORDER=Math\.min\(20/);
 });
