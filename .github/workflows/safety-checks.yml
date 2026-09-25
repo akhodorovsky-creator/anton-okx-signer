@@ -25,12 +25,15 @@ jobs:
           const launcher=fs.readFileSync('eur-order-cap-launcher.js','utf8');
           const guards=[
             "const LIVE=process.env.MULTI_SPOT_LIVE==='true';",
-            "book.exposureEur+MAX_ORDER>CAP_EUR||book.availableEur<MAX_ORDER",
+            "Math.min(MAX_ORDER,remainingTarget,CAP_EUR-book.exposureEur,book.availableEur)",
             "MULTI_COORDINATOR_OWNS_ALL_TRADING",
             "MAX_ORDER=Math.min(20",
             "requested>20",
-            "dailyRegime(await btcDailyBars(),btcBook.qty>1e-9)",
-            "if(regime.action!=='BUY')",
+            "dailyRegime(bars,btcBook.qty>=btcMin)",
+            "riskBudget(bars,CAP_EUR)",
+            "if(!regime.riskOn)",
+            "V2_POSITION_SIZE_GUARD",
+            "TRACKED_BTC_NOT_AVAILABLE",
             "const p=btcBook",
             "BTC_DAILY_REGIME_EXIT",
             "LEGACY_TAKE_PROFIT_5_PERCENT",
