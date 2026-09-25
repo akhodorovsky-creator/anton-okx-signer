@@ -29,11 +29,13 @@ test('launcher no longer rewrites or compiles patched coordinator source',()=>{
   assert.throws(()=>verifyConfig({CAPITAL_CAP_EUR:'1001'}),/INVALID_CAPITAL_CAP_EUR/);
 });
 
-test('coordinator retains capital exposure guard and pair-specific derivatives',()=>{
+test('coordinator retains capital guard and only BTC can receive a new v2 entry',()=>{
   assert.match(coordinator,/book\.exposureEur\+MAX_ORDER>CAP_EUR\|\|book\.availableEur<MAX_ORDER/);
-  assert.match(coordinator,/'ETH-EUR':'ETH-USDT-SWAP'/);
-  assert.match(coordinator,/'DOGE-EUR':'DOGE-USDT-SWAP'/);
-  assert.match(coordinator,/const \{oi,funding\}=derivatives\[p\.pair\]/);
+  assert.match(coordinator,/dailyRegime\(await btcDailyBars\(\),btcBook\.qty>1e-9\)/);
+  assert.match(coordinator,/const p=btcBook/);
+  assert.match(coordinator,/BTC_DAILY_REGIME_EXIT/);
+  assert.match(coordinator,/LEGACY_TAKE_PROFIT_5_PERCENT/);
+  assert.doesNotMatch(coordinator,/compute\(\{|derivativeRows|observeOi\(/);
 });
 
 test('multi-pair legacy monitor never posts /auto',async()=>{
