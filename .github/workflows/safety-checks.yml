@@ -25,16 +25,20 @@ jobs:
           const launcher=fs.readFileSync('eur-order-cap-launcher.js','utf8');
           const guards=[
             "const LIVE=process.env.MULTI_SPOT_LIVE==='true';",
-            "if(book.exposureEur+MAX_ORDER>CAP_EUR||book.availableEur<MAX_ORDER)continue;",
+            "book.exposureEur+MAX_ORDER>CAP_EUR||book.availableEur<MAX_ORDER",
             "MULTI_COORDINATOR_OWNS_ALL_TRADING",
             "MAX_ORDER=Math.min(20",
             "requested>20",
-            "'BTC-EUR':'BTC-USDT-SWAP'",
-            "'ETH-EUR':'ETH-USDT-SWAP'",
-            "'DOGE-EUR':'DOGE-USDT-SWAP'",
-            "const {oi,funding}=derivatives[p.pair]"
+            "dailyRegime(await btcDailyBars(),btcBook.qty>1e-9)",
+            "if(regime.action!=='BUY')",
+            "const p=btcBook",
+            "BTC_DAILY_REGIME_EXIT",
+            "LEGACY_TAKE_PROFIT_5_PERCENT",
+            "LEGACY_STOP_LOSS_2_PERCENT",
+            "ANTONV2"
           ];
           for(const guard of guards)if(!source.includes(guard))throw Error('MISSING_TRADING_GUARD: '+guard);
+          if(/const \{compute\}=require\('\.\/market-strategy'\)|derivativeRows|observeOi\(/.test(source))throw Error('OLD_SHORT_TERM_ENTRY_LOGIC_STILL_ACTIVE');
           if(/SOURCE_PATCH_MISMATCH|_compile\(|vm\.Script|split\(before\)/.test(launcher))throw Error('RUNTIME_PATCHER_STILL_PRESENT');
           NODE
       - run: npm run check
