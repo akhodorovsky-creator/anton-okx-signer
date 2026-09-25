@@ -5,7 +5,7 @@ const http=require('node:http');
 const crypto=require('node:crypto');
 const {spawn}=require('node:child_process');
 const path=require('node:path');
-const {dailyRegime,DAY}=require('./regime-strategy');
+const {dailyRegime,riskBudget,DAY}=require('./regime-strategy');
 const {sellSize}=require('./lot-size');
 const {dustEnabled,entryBlock,isReconciledDust}=require('./frequency-policy');
 const PAIRS=Object.freeze(['BTC-EUR','ETH-EUR','DOGE-EUR']);
@@ -115,10 +115,14 @@ async function tick(){
     if(book.pairs.some(p=>p.pending))throw Error('BOT_ORDER_PENDING');
     const btcBook=book.pairs.find(p=>p.pair==='BTC-EUR');
     if(!btcBook)throw Error('BTC_BOOK_MISSING');
-    const regime=dailyRegime(await btcDailyBars(),btcBook.qty>1e-9);
+    const btcMin=requirePositive(btcBook.instrument.minSz,'BTC_MIN_SIZE');
+    const bars=await btcDailyBars();
+    const regime=dailyRegime(bars,btcBook.qty>=btcMin);
+    const budget=regime.riskOn?riskBudget(bars,CAP_EUR):null;
     console.log('ANTON_V2_REGIME '+JSON.stringify({
       action:regime.action,riskOn:regime.riskOn,close:round(regime.close),sma200:round(regime.sma200),
-      distancePct:round(regime.distancePct),candleAt:new Date(regime.candleAt).toISOString()
+      distancePct:round(regime.distancePct),candleAt:new Date(regime.candleAt).toISOString(),
+      ...(budget?{annualizedVolPct:round(budget.annualizedVolPct),allocationPct:round(budget.allocationPct),targetExposureEur:round(budget.targetExposureEur)}:{})
     }));
     let exited=false;
     for(const p of book.pairs){
@@ -145,26 +149,50 @@ async function tick(){
       }
       const id='ANTONV2'+crypto.randomBytes(8).toString('hex');
       try{await submit(p.pair,'sell',size,id);}catch(e){uncertain=true;throw Error('UNCERTAIN_EXIT_'+p.pair+'_'+e.message);}
-      console.log('ANTON_MULTI_EXIT '+JSON.stringify({pair:p.pair,reason,qty:size,strategy:'BTC_DAILY_SMA200_BAND_V2'}));
+      console.log('ANTON_MULTI_EXIT '+JSON.stringify({pair:p.pair,reason,qty:size,strategy:'BTC_DAILY_SMA200_BAND_V2',riskBudget:'BTC_VOL_TARGET_15_V1'}));
       exited=true;
     }
     if(exited){cache=null;return;}
-    if(regime.action!=='BUY'){
-      console.log('ANTON_V2_NO_ENTRY '+JSON.stringify({reason:regime.action==='HOLD'?'BTC_POSITION_HELD':'BTC_REGIME_RISK_OFF'}));
+    if(!regime.riskOn){
+      console.log('ANTON_V2_NO_ENTRY '+JSON.stringify({reason:'BTC_REGIME_RISK_OFF'}));
       return;
     }
     const p=btcBook,now=Date.now();
-    const blocked=entryBlock(p,ALLOW_DUST_REENTRY);
-    if(blocked){console.log('ANTON_MULTI_SKIP '+JSON.stringify({pair:p.pair,reason:blocked}));return;}
-    if(p.latest&&now-p.latest<24*60*60_000){console.log('ANTON_MULTI_SKIP '+JSON.stringify({pair:p.pair,reason:'V2_24H_FILL_COOLDOWN'}));return;}
-    const check=orderSize(p.instrument,p.price);
-    if(!check.valid){console.log('ANTON_MULTI_SKIP '+JSON.stringify({pair:p.pair,reason:check.reason,minTrade:p.minTrade}));return;}
-    if(book.exposureEur+MAX_ORDER>CAP_EUR||book.availableEur<MAX_ORDER){
+    if(p.qty>=btcMin){
+      const lot=requirePositive(p.instrument.lotSz,'BTC_LOT_SIZE');
+      const tolerance=Math.max(lot*2,p.qty*1e-6,1e-12);
+      if(p.free+tolerance<p.qty){
+        console.log('ANTON_MULTI_SKIP '+JSON.stringify({pair:p.pair,reason:'TRACKED_BTC_NOT_AVAILABLE',trackedQty:p.qty,availableQty:p.free}));
+        return;
+      }
+    }else{
+      const blocked=entryBlock(p,ALLOW_DUST_REENTRY);
+      if(blocked){console.log('ANTON_MULTI_SKIP '+JSON.stringify({pair:p.pair,reason:blocked}));return;}
+    }
+    const remainingTarget=budget.targetExposureEur-p.exposure;
+    if(!(remainingTarget>0)||remainingTarget<p.minTrade){
+      console.log('ANTON_V2_NO_ENTRY '+JSON.stringify({reason:'TARGET_EXPOSURE_REACHED',exposureEur:round(p.exposure),targetExposureEur:round(budget.targetExposureEur)}));
+      return;
+    }
+    if(p.latest&&now-p.latest<DAY){
+      console.log('ANTON_MULTI_SKIP '+JSON.stringify({pair:p.pair,reason:'V2_24H_FILL_COOLDOWN'}));return;
+    }
+    const room=Math.min(MAX_ORDER,remainingTarget,CAP_EUR-book.exposureEur,book.availableEur);
+    const requestedEur=Math.floor(room*100)/100;
+    if(!(requestedEur>0)){
       console.log('ANTON_MULTI_SKIP '+JSON.stringify({pair:p.pair,reason:'CAPITAL_OR_CASH_LIMIT'}));return;
     }
+    const check=orderSize(p.instrument,p.price,requestedEur);
+    if(!check.valid){console.log('ANTON_MULTI_SKIP '+JSON.stringify({pair:p.pair,reason:check.reason,minTrade:p.minTrade,requestedEur}));return;}
+    if(book.exposureEur+requestedEur>CAP_EUR+1e-9||requestedEur>MAX_ORDER+1e-9||requestedEur>book.availableEur+1e-9)
+      throw Error('V2_POSITION_SIZE_GUARD');
     const id='ANTONV2'+crypto.randomBytes(8).toString('hex');
-    try{await submit(p.pair,'buy',String(MAX_ORDER),id);}catch(e){uncertain=true;throw Error('UNCERTAIN_BUY_'+p.pair+'_'+e.message);}
-    console.log('ANTON_V2_ENTRY '+JSON.stringify({pair:p.pair,orderEur:MAX_ORDER,regime:'BTC_DAILY_SMA200_BAND_V2'}));
+    try{await submit(p.pair,'buy',String(requestedEur),id);}catch(e){uncertain=true;throw Error('UNCERTAIN_BUY_'+p.pair+'_'+e.message);}
+    console.log('ANTON_V2_ENTRY '+JSON.stringify({
+      pair:p.pair,orderEur:requestedEur,regime:'BTC_DAILY_SMA200_BAND_V2',riskBudget:'BTC_VOL_TARGET_15_V1',
+      annualizedVolPct:round(budget.annualizedVolPct),allocationPct:round(budget.allocationPct),
+      targetExposureEur:round(budget.targetExposureEur),exposureBeforeEur:round(p.exposure)
+    }));
     cache=null;
   }catch(e){console.error('ANTON_MULTI_ERROR '+e.message);}finally{busy=false;}
 }
