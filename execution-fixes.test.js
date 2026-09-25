@@ -30,9 +30,12 @@ test('launcher no longer rewrites or compiles patched coordinator source',()=>{
 });
 
 test('coordinator retains capital guard and only BTC can receive a new v2 entry',()=>{
-  assert.match(coordinator,/book\.exposureEur\+MAX_ORDER>CAP_EUR\|\|book\.availableEur<MAX_ORDER/);
-  assert.match(coordinator,/dailyRegime\(await btcDailyBars\(\),btcBook\.qty>1e-9\)/);
+  assert.match(coordinator,/Math\.min\(MAX_ORDER,remainingTarget,CAP_EUR-book\.exposureEur,book\.availableEur\)/);
+  assert.match(coordinator,/dailyRegime\(bars,btcBook\.qty>=btcMin\)/);
   assert.match(coordinator,/const p=btcBook/);
+  assert.match(coordinator,/riskBudget\(bars,CAP_EUR\)/);
+  assert.match(coordinator,/V2_POSITION_SIZE_GUARD/);
+  assert.match(coordinator,/TRACKED_BTC_NOT_AVAILABLE/);
   assert.match(coordinator,/BTC_DAILY_REGIME_EXIT/);
   assert.match(coordinator,/LEGACY_TAKE_PROFIT_5_PERCENT/);
   assert.doesNotMatch(coordinator,/compute\(\{|derivativeRows|observeOi\(/);
