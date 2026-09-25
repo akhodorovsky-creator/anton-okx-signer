@@ -1,7 +1,7 @@
 "use strict";
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {DAY,SMA_DAYS,dailyRegime,validateDailyBars}=require('./regime-strategy');
+const {DAY,SMA_DAYS,dailyRegime,riskBudget,realizedVolatility,validateDailyBars}=require('./regime-strategy');
 
 function bars(lastClose=100){
   const start=Date.parse('2026-01-01T00:00:00Z');
@@ -29,4 +29,25 @@ test('daily history fails closed on insufficient or gapped bars',()=>{
   assert.throws(()=>validateDailyBars(bars().slice(1)),/INSUFFICIENT/);
   const broken=bars();broken[100]={...broken[100],timestamp:broken[100].timestamp+DAY};
   assert.throws(()=>validateDailyBars(broken),/GAPPED/);
+});
+
+test('risk budget targets 15% portfolio volatility and is bounded to 10-50% capital',()=>{
+  const quiet=bars(103);
+  const q=riskBudget(quiet,300);
+  assert.equal(q.version,'BTC_VOL_TARGET_15_V1');
+  assert.ok(q.annualizedVolPct>0);
+  assert.ok(q.allocationPct>=10&&q.allocationPct<=50);
+  assert.ok(q.targetExposureEur>=30&&q.targetExposureEur<=150);
+
+  const noisy=bars();
+  for(let i=noisy.length-31;i<noisy.length;i++)noisy[i]={...noisy[i],close:100*(i%2?1.08:0.92)};
+  const n=riskBudget(noisy,300);
+  assert.equal(n.allocationPct,10);
+  assert.equal(n.targetExposureEur,30);
+  assert.ok(realizedVolatility(noisy)>q.annualizedVol);
+});
+
+test('risk budget fails closed when volatility cannot be verified',()=>{
+  assert.throws(()=>riskBudget(bars(),300),/VOLATILITY_UNVERIFIED/);
+  assert.throws(()=>riskBudget(bars(103),0),/INVALID_RISK_CAPITAL/);
 });
