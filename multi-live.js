@@ -8,6 +8,7 @@ const path=require('node:path');
 const {dailyRegime,riskBudget,DAY}=require('./regime-strategy');
 const {sellSize}=require('./lot-size');
 const {dustEnabled,entryBlock,isReconciledDust}=require('./frequency-policy');
+const {getPoliticalLiveGate}=require('./political-live-gate');
 const PAIRS=Object.freeze(['BTC-EUR','ETH-EUR','DOGE-EUR']);
 const CAP_EUR=Math.min(1000,Math.max(1,Number(process.env.CAPITAL_CAP_EUR||200)));
 const LEGACY_TP=.05,LEGACY_SL=.02,SIGNAL_PERIOD=15*60_000;
@@ -157,7 +158,18 @@ async function tick(){
       console.log('ANTON_V2_NO_ENTRY '+JSON.stringify({reason:'BTC_REGIME_RISK_OFF'}));
       return;
     }
-    const p=btcBook,now=Date.now();
+    const now=Date.now();
+    const politicalGate=await getPoliticalLiveGate(publicGet,now);
+    console.log('ANTON_POLITICAL_LIVE_GATE '+JSON.stringify({
+      entryAllowed:politicalGate.entryAllowed,reason:politicalGate.reason,matching:politicalGate.matching,
+      politicalScore:politicalGate.politicalScore,ret5:politicalGate.ret5,volRatio:politicalGate.volRatio,
+      cooldownMinutes:Math.round(politicalGate.cooldownMs/60000)
+    }));
+    if(!politicalGate.entryAllowed){
+      console.log('ANTON_V2_NO_ENTRY '+JSON.stringify({reason:politicalGate.reason,politicalMatching:politicalGate.matching}));
+      return;
+    }
+    const p=btcBook;
     if(p.qty>=btcMin){
       const lot=requirePositive(p.instrument.lotSz,'BTC_LOT_SIZE');
       const tolerance=Math.max(lot*2,p.qty*1e-6,1e-12);
@@ -174,8 +186,10 @@ async function tick(){
       console.log('ANTON_V2_NO_ENTRY '+JSON.stringify({reason:'TARGET_EXPOSURE_REACHED',exposureEur:round(p.exposure),targetExposureEur:round(budget.targetExposureEur)}));
       return;
     }
-    if(p.latest&&now-p.latest<DAY){
-      console.log('ANTON_MULTI_SKIP '+JSON.stringify({pair:p.pair,reason:'V2_24H_FILL_COOLDOWN'}));return;
+    const fillCooldown=politicalGate.cooldownMs;
+    if(p.latest&&now-p.latest<fillCooldown){
+      const reason=fillCooldown<DAY?'POLITICAL_6H_FILL_COOLDOWN':'V2_24H_FILL_COOLDOWN';
+      console.log('ANTON_MULTI_SKIP '+JSON.stringify({pair:p.pair,reason,politicalReason:politicalGate.reason}));return;
     }
     const room=Math.min(MAX_ORDER,remainingTarget,CAP_EUR-book.exposureEur,book.availableEur);
     const requestedEur=Math.floor(room*100)/100;
@@ -191,7 +205,8 @@ async function tick(){
     console.log('ANTON_V2_ENTRY '+JSON.stringify({
       pair:p.pair,orderEur:requestedEur,regime:'BTC_DAILY_SMA200_BAND_V2',riskBudget:'BTC_VOL_TARGET_15_V1',
       annualizedVolPct:round(budget.annualizedVolPct),allocationPct:round(budget.allocationPct),
-      targetExposureEur:round(budget.targetExposureEur),exposureBeforeEur:round(p.exposure)
+      targetExposureEur:round(budget.targetExposureEur),exposureBeforeEur:round(p.exposure),
+      politicalReason:politicalGate.reason,politicalMatching:politicalGate.matching
     }));
     cache=null;
   }catch(e){console.error('ANTON_MULTI_ERROR '+e.message);}finally{busy=false;}

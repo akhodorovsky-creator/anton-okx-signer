@@ -35,3 +35,11 @@ test('news HTTP failure fails closed',async()=>{
  const result=await tick(async()=>({ok:false,status:429}),s=>logs.push(s),now);
  assert.equal(result.ok,false);assert.ok(logs.some(s=>s.includes('"feedHealthy":false')));
 });
+
+test('captures Iran and Hormuz headlines without Trump or Musk',()=>{
+ const result=extract(rss('Iran says Strait of Hormuz talks resume'),now);
+ assert.equal(result.length,1);
+ assert.deepEqual(result[0].people,[]);
+ assert.deepEqual(result[0].regions,['IRAN','HORMUZ']);
+ assert.deepEqual(result[0].subjects,['GEOPOLITICS']);
+});

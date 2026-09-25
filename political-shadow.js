@@ -2,7 +2,7 @@
 // Independent news observer. NEVER imports order execution or emits BUY/SELL.
 const crypto = require('node:crypto');
 const fs = require('node:fs');
-const QUERY='(Trump OR "Elon Musk") (bitcoin OR crypto OR tariffs OR sanctions OR Iran)';
+const QUERY='(Iran OR "Strait of Hormuz" OR Hormuz OR Houthi OR Israel OR Trump OR "Elon Musk") (bitcoin OR crypto OR oil OR market OR sanctions OR tariffs OR attack OR talks OR ceasefire)';
 const FEEDS = [
   'https://news.google.com/rss/search?q=' + encodeURIComponent(QUERY+' when:1h') + '&hl=en-US&gl=US&ceid=US:en',
   'https://www.bing.com/news/search?q=' + encodeURIComponent(QUERY) + '&format=rss'
@@ -21,9 +21,10 @@ function extract(xml, now=Date.now()) {
     if (!title || !Number.isFinite(published) || published>now+60000 || now-published>60*60_000) return null;
     const headline = decode(title).slice(0,220);
     const people = [ /\b(?:donald\s+)?trump\b/i.test(headline)?'TRUMP':null, /\b(?:elon\s+)?musk\b/i.test(headline)?'MUSK':null ].filter(Boolean);
-    const subjects = [ /\b(?:bitcoin|btc|crypto(?:currency)?)\b/i.test(headline)?'CRYPTO':null, /\b(?:tariffs?|trade)\b/i.test(headline)?'TRADE':null, /\b(?:sanctions?|iran)\b/i.test(headline)?'GEOPOLITICS':null ].filter(Boolean);
-    if (!people.length || !subjects.length) return null;
-    return { id:crypto.createHash('sha256').update(headline+'|'+published).digest('hex').slice(0,20), headline, publishedAt:new Date(published).toISOString(), people, subjects };
+    const regions = [ /\biran(?:ian)?\b/i.test(headline)?'IRAN':null, /\b(?:strait\s+of\s+)?hormuz\b/i.test(headline)?'HORMUZ':null, /\bhouthi(?:s)?\b/i.test(headline)?'HOUTHI':null, /\bisrael(?:i)?\b/i.test(headline)?'ISRAEL':null ].filter(Boolean);
+    const subjects = [ /\b(?:bitcoin|btc|crypto(?:currency)?)\b/i.test(headline)?'CRYPTO':null, /\b(?:tariffs?|trade)\b/i.test(headline)?'TRADE':null, /\b(?:sanctions?|iran(?:ian)?|hormuz|houthi(?:s)?|israel(?:i)?|missiles?|drones?|attacks?|ceasefire)\b/i.test(headline)?'GEOPOLITICS':null ].filter(Boolean);
+    if ((!people.length&&!regions.length) || !subjects.length) return null;
+    return { id:crypto.createHash('sha256').update(headline+'|'+published).digest('hex').slice(0,20), headline, publishedAt:new Date(published).toISOString(), people, regions, subjects };
   }).filter(Boolean);
 }
 async function readFeed(fetchFn=fetch, now=Date.now()) {
