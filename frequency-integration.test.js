@@ -8,7 +8,7 @@ const MINUTE=60_000,DAY=86_400_000;
 const start=Date.UTC(2026,8,25,12,0,0);
 const latestDaily=Date.UTC(2026,8,24,0,0,0);
 
-function harness({riskOn=false,pending=false,ethPosition=false,ethPrice=3000}={}){
+function harness({riskOn=false,pending=false,ethPosition=false,ethPrice=3000,btcQty=0,btcLastAge=2*DAY}={}){
   let now=start,requests=[],logs=[],scheduled=null;
   const source=fs.readFileSync(require.resolve('./multi-live'),'utf8');
   const prices={'BTC-EUR':65000,'ETH-EUR':ethPrice,'DOGE-EUR':0.15};
@@ -20,7 +20,11 @@ function harness({riskOn=false,pending=false,ethPosition=false,ethPrice=3000}={}
       return [String(ts),String(close),String(close),String(close),String(close),'100','0','0','1'];
     });
   }
-  const book=pair=>ethPosition&&pair==='ETH-EUR'?[{ordId:'synthetic',clOrdId:'ANTONsynthetic',instId:pair,side:'buy',accFillSz:'0.005',avgPx:'3000',fee:'0',feeCcy:'EUR',cTime:String(start-DAY)}]:[];
+  const book=pair=>{
+    if(btcQty>0&&pair==='BTC-EUR')return [{ordId:'btc-synthetic',clOrdId:'ANTONbtcsynthetic',instId:pair,side:'buy',accFillSz:String(btcQty),avgPx:'65000',fee:'0',feeCcy:'EUR',cTime:String(start-btcLastAge)}];
+    if(ethPosition&&pair==='ETH-EUR')return [{ordId:'eth-synthetic',clOrdId:'ANTONethsynthetic',instId:pair,side:'buy',accFillSz:'0.005',avgPx:'3000',fee:'0',feeCcy:'EUR',cTime:String(start-DAY)}];
+    return [];
+  };
   const fakeFetch=async(url,options={})=>{
     const signed=String(url).startsWith('http://127.0.0.1');
     const payload=signed?JSON.parse(options.body):null;
@@ -30,7 +34,7 @@ function harness({riskOn=false,pending=false,ethPosition=false,ethPrice=3000}={}
     requests.push({at:now,method:payload?.method||'GET',route,body:payload?.body});
     let data;
     if(route.startsWith('/api/v5/account/balance'))data=[{details:[
-      {ccy:'EUR',availBal:'100'},{ccy:'BTC',availBal:'0'},
+      {ccy:'EUR',availBal:'100'},{ccy:'BTC',availBal:String(btcQty)},
       {ccy:'ETH',availBal:ethPosition?'0.005':'0'},{ccy:'DOGE',availBal:'0'}
     ]}];
     else if(route.startsWith('/api/v5/trade/orders-history-archive'))data=[];
@@ -73,6 +77,28 @@ test('risk-off stays in EUR while risk-on can open only BTC',async()=>{
   assert.equal(orders[0].body.side,'buy');
   assert.equal(orders[0].body.sz,'20');
   assert.match(orders[0].body.clOrdId,/^ANTONV2/);
+});
+
+test('risk-on can add one guarded BTC tranche to an existing tracked BTC position',async()=>{
+  const h=harness({riskOn:true,btcQty:0.0003});await h.tick();
+  const orders=h.requests.filter(r=>r.method==='POST');
+  assert.equal(orders.length,1);
+  assert.equal(orders[0].body.instId,'BTC-EUR');
+  assert.equal(orders[0].body.side,'buy');
+  assert.equal(orders[0].body.sz,'20');
+  assert.ok(h.logs.some(l=>l.includes('BTC_VOL_TARGET_15_V1')));
+});
+
+test('24-hour fill cooldown prevents rapid BTC accumulation',async()=>{
+  const h=harness({riskOn:true,btcQty:0.0003,btcLastAge:6*60*60_000});await h.tick();
+  assert.equal(h.requests.filter(r=>r.method==='POST').length,0);
+  assert.ok(h.logs.some(l=>l.includes('V2_24H_FILL_COOLDOWN')));
+});
+
+test('risk budget stops adding BTC after target exposure is reached',async()=>{
+  const h=harness({riskOn:true,btcQty:0.003});await h.tick();
+  assert.equal(h.requests.filter(r=>r.method==='POST').length,0);
+  assert.ok(h.logs.some(l=>l.includes('TARGET_EXPOSURE_REACHED')));
 });
 
 test('existing ETH remains exit-managed during migration but never creates a new ETH entry',async()=>{
