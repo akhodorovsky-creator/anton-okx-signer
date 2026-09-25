@@ -5,13 +5,12 @@ const http=require('node:http');
 const crypto=require('node:crypto');
 const {spawn}=require('node:child_process');
 const path=require('node:path');
-const {compute}=require('./market-strategy');
+const {dailyRegime,DAY}=require('./regime-strategy');
 const {sellSize}=require('./lot-size');
-const {signalPeriod,dustEnabled,observeOi,entryBlock,isReconciledDust}=require('./frequency-policy');
+const {dustEnabled,entryBlock,isReconciledDust}=require('./frequency-policy');
 const PAIRS=Object.freeze(['BTC-EUR','ETH-EUR','DOGE-EUR']);
-const DERIVATIVES=Object.freeze({'BTC-EUR':'BTC-USDT-SWAP','ETH-EUR':'ETH-USDT-SWAP','DOGE-EUR':'DOGE-USDT-SWAP'});
-const CAP_EUR=Math.min(1000,Math.max(1,Number(process.env.CAPITAL_CAP_EUR||200))), TP=.05, SL=.02, PERIOD=15*60_000;
-const SIGNAL_PERIOD=signalPeriod(process.env.MULTI_SIGNAL_INTERVAL_MINUTES);
+const CAP_EUR=Math.min(1000,Math.max(1,Number(process.env.CAPITAL_CAP_EUR||200)));
+const LEGACY_TP=.05,LEGACY_SL=.02,SIGNAL_PERIOD=15*60_000;
 const ALLOW_DUST_REENTRY=dustEnabled(process.env.MULTI_ALLOW_DUST_REENTRY);
 const PORT=Number(process.env.PORT||3000),CHILD_PORT=PORT+10,SIGNER_PORT=PORT+23;
 const LIVE=process.env.MULTI_SPOT_LIVE==='true';
@@ -32,7 +31,6 @@ function parsePnlBaselines(raw){
 }
 const PNL_BASELINES=parsePnlBaselines(process.env.PNL_BASELINES_JSON);
 const BOT_START=Date.parse('2026-09-01T00:00:00Z');
-const states=new Map(PAIRS.map(p=>[p,{lastOi:null,lastSignal:null,lastSignalAt:null}]));
 let busy=false,uncertain=false,cache=null;const reportedDust=new Set();
 const n=x=>x==null||x===''?NaN:Number(x);
 function requirePositive(x,field){const v=n(x);if(!(v>0)||!Number.isFinite(v))throw Error('INVALID_'+field);return v;}
@@ -42,6 +40,31 @@ function proxy(req,res){const headers={...req.headers,host:`127.0.0.1:${CHILD_PO
 function checkAuth(req,route){return new Promise((resolve,reject)=>{const up=http.request({hostname:'127.0.0.1',port:CHILD_PORT,path:route,method:'GET',headers:{cookie:req.headers.cookie||'',authorization:req.headers.authorization||''},timeout:65000},res=>{let text='';res.on('data',c=>{text+=c;if(text.length>1e6){res.destroy();reject(Error('AUTH_TOO_LARGE'));}});res.on('end',()=>resolve({status:res.statusCode,headers:res.headers,text}));res.on('error',reject);});up.on('timeout',()=>up.destroy(Error('AUTH_TIMEOUT')));up.on('error',reject);up.end();});}
 async function signer(method,route,body){if(!process.env.SIGNER_TOKEN)throw Error('SIGNER_TOKEN_MISSING');const r=await fetch(`http://127.0.0.1:${SIGNER_PORT}/okx`,{method:'POST',headers:{authorization:`Bearer ${process.env.SIGNER_TOKEN}`,'content-type':'application/json'},body:JSON.stringify({method,path:route,...(body?{body,confirmLive:true}:{})}),signal:AbortSignal.timeout(20000)});const d=await r.json();if(!r.ok||d.ok!==true||d.code!=='0'||!Array.isArray(d.data))throw Error('OKX_API_'+r.status);return d.data;}
 async function publicGet(route){const r=await fetch('https://eea.okx.com'+route,{signal:AbortSignal.timeout(15000)});if(!r.ok)throw Error('MARKET_HTTP_'+r.status);const d=await r.json();if(d.code!=='0'||!Array.isArray(d.data))throw Error('MARKET_DATA');return d;}
+async function btcDailyBars(now=Date.now()){
+  const rows=[];let after=null;
+  for(let page=0;page<3;page++){
+    const route='/api/v5/market/history-candles?instId=BTC-EUR&bar=1Dutc&limit=100'+(after?'&after='+encodeURIComponent(after):'');
+    const payload=await publicGet(route),part=payload.data;
+    if(!part.length)throw Error('BTC_DAILY_HISTORY_UNAVAILABLE');
+    rows.push(...part);
+    const next=Math.min(...part.map(r=>Number(r[0])));
+    if(!Number.isFinite(next)||(after!==null&&next>=Number(after)))throw Error('BTC_DAILY_HISTORY_NOT_ADVANCING');
+    after=String(next);
+  }
+  const unique=new Map();
+  for(const r of rows){
+    const timestamp=Number(r[0]),close=Number(r[4]);
+    if(r[8]!=='1')continue;
+    if(!Number.isFinite(timestamp)||!(close>0))throw Error('BTC_DAILY_HISTORY_INVALID');
+    unique.set(timestamp,{timestamp,close});
+  }
+  const bars=[...unique.values()].sort((a,b)=>a.timestamp-b.timestamp);
+  if(bars.length<200)throw Error('BTC_DAILY_HISTORY_SHORT');
+  const last=bars.at(-1);
+  const closedAt=last.timestamp+DAY;
+  if(closedAt>now+60_000||now-closedAt>36*60*60_000)throw Error('BTC_DAILY_HISTORY_STALE');
+  return bars;
+}
 function uniqueOrders(recent,archive){if(!Array.isArray(recent)||!Array.isArray(archive)||recent.length>=100||archive.length>=100)throw Error('ORDER_HISTORY_INCOMPLETE');const map=new Map();for(const o of [...archive,...recent])if(String(o.clOrdId||'').startsWith('ANTON')&&o.ordId)map.set(o.ordId,o);return [...map.values()].sort((a,b)=>Number(a.cTime||0)-Number(b.cTime||0));}
 function ledger(orders,price){let qty=0,cost=0,cash=0,fills=0,latest=0;for(const o of orders){const filled=n(o.accFillSz),avg=n(o.avgPx||o.fillPx);if(!(filled>0))continue;if(!(avg>0))throw Error('INVALID_FILL_PRICE');const fee=n(o.fee||0);if(!Number.isFinite(fee))throw Error('INVALID_FEE');const base=String(o.instId||'').split('-')[0];const baseFee=o.feeCcy===base?fee:0,eurFee=o.feeCcy==='EUR'?fee:0;if(fee&&!baseFee&&!eurFee)throw Error('UNKNOWN_FEE_CURRENCY');if(o.side==='buy'){const received=filled+baseFee;if(!(received>0))throw Error('INVALID_NET_FILL');qty+=received;const paid=filled*avg-eurFee;cash-=paid;cost+=paid;}else if(o.side==='sell'){const taken=filled-baseFee;if(!(taken>0)||taken>qty+1e-8)throw Error('SELL_EXCEEDS_TRACKED_POSITION');cost*=1-Math.min(1,taken/qty);qty=Math.max(0,qty-taken);cash+=filled*avg+eurFee;}else throw Error('UNKNOWN_SIDE');fills++;latest=Math.max(latest,Number(o.cTime||0));}if(!(qty>=0)||!(price>0))throw Error('INVALID_POSITION');return{qty,entry:qty>1e-9?cost/qty:0,exposure:qty*price,pnlEur:cash+qty*price,fills,latest};}
 function applyPnlBaseline(book,pair,baselines=PNL_BASELINES){
@@ -90,60 +113,63 @@ async function tick(){
     if(!(MAX_ORDER>0)||MAX_ORDER>20)throw Error('ORDER_LIMIT_UNSAFE');
     const book=await portfolio();
     if(book.pairs.some(p=>p.pending))throw Error('BOT_ORDER_PENDING');
+    const btcBook=book.pairs.find(p=>p.pair==='BTC-EUR');
+    if(!btcBook)throw Error('BTC_BOOK_MISSING');
+    const regime=dailyRegime(await btcDailyBars(),btcBook.qty>1e-9);
+    console.log('ANTON_V2_REGIME '+JSON.stringify({
+      action:regime.action,riskOn:regime.riskOn,close:round(regime.close),sma200:round(regime.sma200),
+      distancePct:round(regime.distancePct),candleAt:new Date(regime.candleAt).toISOString()
+    }));
     let exited=false;
     for(const p of book.pairs){
       if(!(p.qty>1e-9))continue;
-      const reason=p.price>=p.entry*(1+TP)?'TAKE_PROFIT_5_PERCENT':p.price<=p.entry*(1-SL)?'STOP_LOSS_2_PERCENT':null;
+      let reason=null;
+      if(p.pair==='BTC-EUR'){
+        if(regime.action==='EXIT')reason='BTC_DAILY_REGIME_EXIT';
+      }else{
+        reason=p.price>=p.entry*(1+LEGACY_TP)?'LEGACY_TAKE_PROFIT_5_PERCENT':
+          p.price<=p.entry*(1-LEGACY_SL)?'LEGACY_STOP_LOSS_2_PERCENT':null;
+      }
       if(!reason)continue;
       const size=sellSize(p.qty,p.free,p.instrument.lotSz,p.instrument.minSz);
-      if(!size){if(isReconciledDust(p)){if(!reportedDust.has(p.pair)){console.info('ANTON_MULTI_DUST '+JSON.stringify({pair:p.pair,qty:p.qty,available:p.free,minSz:p.instrument.minSz,lotSz:p.instrument.lotSz}));reportedDust.add(p.pair);}continue;}console.error('ANTON_MULTI_EXIT_BLOCKED '+JSON.stringify({pair:p.pair,reason:'BELOW_MIN_OR_UNAVAILABLE',qty:p.qty,available:p.free,minSz:p.instrument.minSz,lotSz:p.instrument.lotSz}));continue;}
-      const id='ANTON'+crypto.randomBytes(10).toString('hex');
+      if(!size){
+        if(isReconciledDust(p)){
+          if(!reportedDust.has(p.pair)){
+            console.info('ANTON_MULTI_DUST '+JSON.stringify({pair:p.pair,qty:p.qty,available:p.free,minSz:p.instrument.minSz,lotSz:p.instrument.lotSz}));
+            reportedDust.add(p.pair);
+          }
+          continue;
+        }
+        console.error('ANTON_MULTI_EXIT_BLOCKED '+JSON.stringify({pair:p.pair,reason:'BELOW_MIN_OR_UNAVAILABLE',qty:p.qty,available:p.free,minSz:p.instrument.minSz,lotSz:p.instrument.lotSz}));
+        continue;
+      }
+      const id='ANTONV2'+crypto.randomBytes(8).toString('hex');
       try{await submit(p.pair,'sell',size,id);}catch(e){uncertain=true;throw Error('UNCERTAIN_EXIT_'+p.pair+'_'+e.message);}
-      console.log('ANTON_MULTI_EXIT '+JSON.stringify({pair:p.pair,reason,qty:size}));
+      console.log('ANTON_MULTI_EXIT '+JSON.stringify({pair:p.pair,reason,qty:size,strategy:'BTC_DAILY_SMA200_BAND_V2'}));
       exited=true;
     }
     if(exited){cache=null;return;}
-    const [btc,eth,doge,...derivativeRows]=await Promise.all([
-      publicGet('/api/v5/market/candles?instId=BTC-EUR&bar=5m&limit=100'),
-      publicGet('/api/v5/market/candles?instId=ETH-EUR&bar=5m&limit=100'),
-      publicGet('/api/v5/market/candles?instId=DOGE-EUR&bar=5m&limit=100'),
-      ...PAIRS.flatMap(pair=>{const instId=DERIVATIVES[pair];return[
-        publicGet(`/api/v5/public/open-interest?instType=SWAP&instId=${instId}`),
-        publicGet(`/api/v5/public/funding-rate?instId=${instId}`)
-      ];})
-    ]);
-    const feeds={'BTC-EUR':btc,'ETH-EUR':eth,'DOGE-EUR':doge};
-    const derivatives=Object.fromEntries(PAIRS.map((pair,i)=>[pair,{oi:derivativeRows[i*2],funding:derivativeRows[i*2+1]}]));
-    for(const p of book.pairs){
-      const {oi,funding}=derivatives[p.pair];
-      const state=states.get(p.pair), now=Date.now();
-      const fast=SIGNAL_PERIOD<PERIOD;
-      const window=fast?observeOi(state,oi.code==='0'?oi.data[0]:null,now):null;
-      const computeState=fast?{...state,lastOi:window.ready?window.prior:null}:state;
-      const d=compute({btc:feeds[p.pair],eth:p.pair==='BTC-EUR'?eth:btc,oi,funding},computeState,now);
-      if(fast&&(!window.ready||d.btcCandleAt===state.lastEvaluatedCandleAt)){
-        d.actionable=false;
-        d.reasons.push(!window.ready?window.reason:'CANDLE_ALREADY_EVALUATED');
-      }
-      if(d.marketInputsFresh)state.lastEvaluatedCandleAt=d.btcCandleAt;
-      console.log('ANTON_MULTI_SIGNAL '+JSON.stringify({pair:p.pair,signal:d.signal,actionable:d.actionable,fresh:d.marketInputsFresh,reasons:d.reasons,intervalMinutes:SIGNAL_PERIOD/60000,oiLookbackMs:window?.lookbackMs}));
-      const oiNow=n(oi.data[0]?.oiUsd??oi.data[0]?.oi);
-      if(d.marketInputsFresh&&oiNow>0)state.lastOi=oiNow;
-      if(!d.actionable||d.signal!=='BUY')continue;
-      const blocked=entryBlock(p,ALLOW_DUST_REENTRY);
-      if(blocked){console.log('ANTON_MULTI_SKIP '+JSON.stringify({pair:p.pair,reason:blocked}));continue;}
-      if(p.latest&&now-p.latest<30*60_000){console.log('ANTON_MULTI_SKIP '+JSON.stringify({pair:p.pair,reason:'RECENT_FILL_COOLDOWN'}));continue;}
-      const check=orderSize(p.instrument,p.price);
-      if(!check.valid){console.log('ANTON_MULTI_SKIP '+JSON.stringify({pair:p.pair,reason:check.reason,minTrade:p.minTrade}));continue;}
-      if(book.exposureEur+MAX_ORDER>CAP_EUR||book.availableEur<MAX_ORDER)continue;
-      const id='ANTON'+crypto.randomBytes(10).toString('hex');
-      try{await submit(p.pair,'buy',String(MAX_ORDER),id);}catch(e){uncertain=true;throw Error('UNCERTAIN_BUY_'+p.pair+'_'+e.message);}
-      state.lastSignal='BUY';state.lastSignalAt=now;cache=null;break;
+    if(regime.action!=='BUY'){
+      console.log('ANTON_V2_NO_ENTRY '+JSON.stringify({reason:regime.action==='HOLD'?'BTC_POSITION_HELD':'BTC_REGIME_RISK_OFF'}));
+      return;
     }
+    const p=btcBook,now=Date.now();
+    const blocked=entryBlock(p,ALLOW_DUST_REENTRY);
+    if(blocked){console.log('ANTON_MULTI_SKIP '+JSON.stringify({pair:p.pair,reason:blocked}));return;}
+    if(p.latest&&now-p.latest<24*60*60_000){console.log('ANTON_MULTI_SKIP '+JSON.stringify({pair:p.pair,reason:'V2_24H_FILL_COOLDOWN'}));return;}
+    const check=orderSize(p.instrument,p.price);
+    if(!check.valid){console.log('ANTON_MULTI_SKIP '+JSON.stringify({pair:p.pair,reason:check.reason,minTrade:p.minTrade}));return;}
+    if(book.exposureEur+MAX_ORDER>CAP_EUR||book.availableEur<MAX_ORDER){
+      console.log('ANTON_MULTI_SKIP '+JSON.stringify({pair:p.pair,reason:'CAPITAL_OR_CASH_LIMIT'}));return;
+    }
+    const id='ANTONV2'+crypto.randomBytes(8).toString('hex');
+    try{await submit(p.pair,'buy',String(MAX_ORDER),id);}catch(e){uncertain=true;throw Error('UNCERTAIN_BUY_'+p.pair+'_'+e.message);}
+    console.log('ANTON_V2_ENTRY '+JSON.stringify({pair:p.pair,orderEur:MAX_ORDER,regime:'BTC_DAILY_SMA200_BAND_V2'}));
+    cache=null;
   }catch(e){console.error('ANTON_MULTI_ERROR '+e.message);}finally{busy=false;}
 }
-function page(){return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ANTON Signal — три пары</title><style>body{background:#0b0f14;color:#edf3fc;font:15px system-ui;margin:0}main{max-width:900px;margin:auto;padding:18px}h1{font-size:25px}.muted{color:#a0b2c5}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px}.tile{padding:17px;background:#141d28;border:1px solid #344252;border-radius:14px}.value{font-size:23px;font-weight:750;margin-top:6px}table{width:100%;border-collapse:collapse;display:block;overflow-x:auto;white-space:nowrap}th,td{text-align:left;padding:12px 8px;border-bottom:1px solid #344252;font-size:13px}th,small{color:#a0b2c5}#error{color:#ff9f9f}</style></head><body><main><h1>ANTON Signal</h1><p class="muted">BTC-EUR · ETH-EUR · DOGE-EUR · только Spot / EUR</p><p id="error"></p><section class="grid"><div class="tile">Режим<div id="mode" class="value">—</div></div><div class="tile">Прибыль / убыток (оценка)<div id="pnl" class="value">—</div></div><div class="tile">Открытые позиции<div id="exposure" class="value">—</div></div><div class="tile">Свободно EUR на OKX<div id="available" class="value">—</div></div><div class="tile">Исполненные ордера<div id="fills" class="value">—</div></div><div class="tile">Лимит капитала<div class="value">${CAP_EUR} €</div><small>Не фактическая сумма на счёте</small></div></section><h2>Торговые пары</h2><table><thead><tr><th>Пара</th><th>Цена</th><th>Позиция</th><th>Стоимость</th><th>P&L (оценка)</th><th>Минимум / статус</th></tr></thead><tbody id="pairs"><tr><td colspan="6">Загрузка...</td></tr></tbody></table><p class="muted"><small id="updated">Обновление каждые 15 секунд. Результат оценочный, не банковская выписка.</small></p></main><script>const money=n=>n==null?'—':new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR'}).format(n);async function refresh(){try{const r=await fetch('/multi-data',{cache:'no-store'});const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'Ошибка данных');document.getElementById('error').textContent=d.degraded?(d.warning||'Диагностический режим'):'';for(const [id,value] of Object.entries({mode:d.mode,pnl:money(d.pnlEur),exposure:money(d.exposureEur),available:money(d.availableEur),fills:d.filledOrders==null?'—':d.filledOrders}))document.getElementById(id).textContent=value;document.getElementById('pairs').innerHTML=d.pairs.map(p=>'<tr><td>'+p.pair+'</td><td>'+money(p.price)+'</td><td>'+p.qty.toFixed(8)+'</td><td>'+money(p.exposure)+'</td><td>'+money(p.pnlEur)+'</td><td>'+(p.qty>0?(p.dust?'Технический остаток':'В позиции'):p.minTrade>d.orderLimitEur?'Минимум выше лимита':p.instrumentLive?'Ожидает сигнал':'Недоступна')+'</td></tr>').join('');document.getElementById('updated').textContent='Обновлено: '+new Date(d.updatedAt).toLocaleString('ru-RU')+' · Результат оценочный.';}catch(e){document.getElementById('error').textContent='Не удалось обновить: '+e.message;}}refresh();setInterval(refresh,15000);</script></body></html>`;}
+function page(){return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ANTON Signal — regime v2</title><style>body{background:#0b0f14;color:#edf3fc;font:15px system-ui;margin:0}main{max-width:900px;margin:auto;padding:18px}h1{font-size:25px}.muted{color:#a0b2c5}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px}.tile{padding:17px;background:#141d28;border:1px solid #344252;border-radius:14px}.value{font-size:23px;font-weight:750;margin-top:6px}table{width:100%;border-collapse:collapse;display:block;overflow-x:auto;white-space:nowrap}th,td{text-align:left;padding:12px 8px;border-bottom:1px solid #344252;font-size:13px}th,small{color:#a0b2c5}#error{color:#ff9f9f}</style></head><body><main><h1>ANTON Signal</h1><p class="muted">BTC-EUR новая стратегия · ETH/DOGE только сопровождение старых позиций · Spot / EUR</p><p id="error"></p><section class="grid"><div class="tile">Режим<div id="mode" class="value">—</div></div><div class="tile">Прибыль / убыток (оценка)<div id="pnl" class="value">—</div></div><div class="tile">Открытые позиции<div id="exposure" class="value">—</div></div><div class="tile">Свободно EUR на OKX<div id="available" class="value">—</div></div><div class="tile">Исполненные ордера<div id="fills" class="value">—</div></div><div class="tile">Лимит капитала<div class="value">${CAP_EUR} €</div><small>Не фактическая сумма на счёте</small></div></section><h2>Торговые пары</h2><table><thead><tr><th>Пара</th><th>Цена</th><th>Позиция</th><th>Стоимость</th><th>P&L (оценка)</th><th>Минимум / статус</th></tr></thead><tbody id="pairs"><tr><td colspan="6">Загрузка...</td></tr></tbody></table><p class="muted"><small id="updated">Обновление каждые 15 секунд. Результат оценочный, не банковская выписка.</small></p></main><script>const money=n=>n==null?'—':new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR'}).format(n);async function refresh(){try{const r=await fetch('/multi-data',{cache:'no-store'});const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'Ошибка данных');document.getElementById('error').textContent=d.degraded?(d.warning||'Диагностический режим'):'';for(const [id,value] of Object.entries({mode:d.mode,pnl:money(d.pnlEur),exposure:money(d.exposureEur),available:money(d.availableEur),fills:d.filledOrders==null?'—':d.filledOrders}))document.getElementById(id).textContent=value;document.getElementById('pairs').innerHTML=d.pairs.map(p=>'<tr><td>'+p.pair+'</td><td>'+money(p.price)+'</td><td>'+p.qty.toFixed(8)+'</td><td>'+money(p.exposure)+'</td><td>'+money(p.pnlEur)+'</td><td>'+(p.qty>0?(p.dust?'Технический остаток':'В позиции'):p.minTrade>d.orderLimitEur?'Минимум выше лимита':p.instrumentLive?'Ожидает сигнал':'Недоступна')+'</td></tr>').join('');document.getElementById('updated').textContent='Обновлено: '+new Date(d.updatedAt).toLocaleString('ru-RU')+' · Результат оценочный.';}catch(e){document.getElementById('error').textContent='Не удалось обновить: '+e.message;}}refresh();setInterval(refresh,15000);</script></body></html>`;}
 async function handler(req,res){const route=(req.url||'').split('?')[0];if(LIVE&&route==='/auto'&&req.method==='POST'){req.resume();return json(res,409,{ok:false,error:'MULTI_COORDINATOR_OWNS_ALL_TRADING'});}if(req.method==='GET'&&(route==='/dashboard'||route==='/multi-data')){let auth;try{auth=await checkAuth(req,'/dashboard'+(route==='/dashboard'?(req.url.slice(route.length)||''):''));}catch{return json(res,502,{ok:false,error:'Auth unavailable'});}if(auth.status!==200){res.writeHead(auth.status||502,{...auth.headers,'cache-control':'no-store'});return res.end(auth.text);}if(route==='/dashboard'){res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store','x-frame-options':'DENY','referrer-policy':'no-referrer'});return res.end(page());}try{if(!cache||Date.now()-cache.at>10000)cache={at:Date.now(),value:await portfolio()};return json(res,200,{ok:true,...cache.value,pairs:cache.value.pairs.map(p=>({pair:p.pair,price:p.price,qty:p.qty,exposure:round(p.exposure),pnlEur:round(p.pnlEur),minTrade:p.minTrade,instrumentLive:p.instrument.state==='live',dust:isReconciledDust(p)}))});}catch(e){console.error('ANTON_MULTI_DASHBOARD_ERROR '+e.message);try{return json(res,200,await dashboardFallback(e.message));}catch(f){console.error('ANTON_MULTI_DASHBOARD_FALLBACK_ERROR '+f.message);return json(res,502,{ok:false,error:'Данные OKX временно недоступны'});}}}return proxy(req,res);}
 function run(){if(!Number.isInteger(PORT)||PORT<1||PORT>65500||!Number.isFinite(MAX_ORDER)||!(MAX_ORDER>0)||MAX_ORDER>20||!Number.isFinite(CAP_EUR)||CAP_EUR<1||CAP_EUR>1000)throw Error('UNSAFE_CONFIGURATION');const child=spawn(process.execPath,[path.join(__dirname,'dashboard-launcher.js')],{env:{...process.env,PORT:String(CHILD_PORT),MARKET_ONLY_LIVE:'false'},stdio:'inherit'});const server=http.createServer((req,res)=>{handler(req,res).catch(e=>{console.error('ANTON_MULTI_HTTP_ERROR '+e.message);if(!res.headersSent)json(res,502,{ok:false,error:'Unavailable'});else res.destroy();});});server.listen(PORT,'0.0.0.0',()=>console.log('ANTON_MULTI_READY '+JSON.stringify({pairs:PAIRS,live:LIVE,maxOrderEur:MAX_ORDER,capEur:CAP_EUR,signalIntervalMinutes:SIGNAL_PERIOD/60000,allowDustReentry:ALLOW_DUST_REENTRY})));const initial=setTimeout(tick,60000),interval=setInterval(tick,SIGNAL_PERIOD);let closing=false;const stop=s=>{if(closing)return;closing=true;clearTimeout(initial);clearInterval(interval);server.close();child.kill(s);};process.once('SIGTERM',()=>stop('SIGTERM'));process.once('SIGINT',()=>stop('SIGINT'));child.once('exit',(code,s)=>{clearTimeout(initial);clearInterval(interval);server.close();if(!closing)console.error('ANTON_CHILD_EXIT '+JSON.stringify({code,s}));process.exit(code==null?1:code);});}
-if(require.main===module)run();module.exports={PAIRS,DERIVATIVES,ledger,reportLedger,applyPnlBaseline,parsePnlBaselines,uniqueOrders,orderSize,sellSize,page,handler,tick,portfolio,run};
+if(require.main===module)run();module.exports={PAIRS,ledger,reportLedger,applyPnlBaseline,parsePnlBaselines,uniqueOrders,orderSize,sellSize,btcDailyBars,page,handler,tick,portfolio,run};
 
