@@ -34,7 +34,14 @@ function evaluatePoliticalGate(context,reaction){
   const politicalScore=politicalAdjustment(context,reaction);
   const base={matching,politicalScore:Number(politicalScore.toFixed(3)),ret5:reaction.ret5,volRatio:reaction.volRatio,candleAt:reaction.candleAt};
   if(politicalScore<0)return{...base,entryAllowed:false,cooldownMs:NORMAL_COOLDOWN,reason:'POLITICAL_MARKET_CONFIRMED_DOWN'};
-  if(politicalScore>0)return{...base,entryAllowed:true,cooldownMs:EVENT_COOLDOWN,reason:'POLITICAL_MARKET_CONFIRMED_UP'};
+  if(politicalScore>0){
+    const counts=context.subjectCounts||{};
+    const geopolitical=Number(counts.GEOPOLITICS||0);
+    const crypto=Number(counts.CRYPTO||0);
+    if(geopolitical>0)return{...base,entryAllowed:true,cooldownMs:NORMAL_COOLDOWN,reason:'POLITICAL_MARKET_CONFIRMED_UP_NO_ACCELERATION'};
+    if(crypto>0)return{...base,entryAllowed:true,cooldownMs:EVENT_COOLDOWN,reason:'POLITICAL_CRYPTO_CONFIRMED_UP'};
+    return{...base,entryAllowed:true,cooldownMs:NORMAL_COOLDOWN,reason:'POLITICAL_MARKET_CONFIRMED_UP_NO_ACCELERATION'};
+  }
   return{...base,entryAllowed:true,cooldownMs:NORMAL_COOLDOWN,reason:'POLITICAL_EVENT_NO_CONFIRMED_REACTION'};
 }
 

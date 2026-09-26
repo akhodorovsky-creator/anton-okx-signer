@@ -36,6 +36,38 @@ let busy=false,uncertain=false,cache=null;const reportedDust=new Set();
 const n=x=>x==null||x===''?NaN:Number(x);
 function requirePositive(x,field){const v=n(x);if(!(v>0)||!Number.isFinite(v))throw Error('INVALID_'+field);return v;}
 function round(x){return Number(x.toFixed(4));}
+const HOUR=60*60_000;
+function emaValue(values,period){
+  let value=values[0],k=2/(period+1);
+  for(let i=1;i<values.length;i++)value=values[i]*k+value*(1-k);
+  return value;
+}
+function rsiValue(values,period=14){
+  let gains=0,losses=0;
+  for(let i=values.length-period;i<values.length;i++){
+    const delta=values[i]-values[i-1];
+    if(delta>=0)gains+=delta;else losses-=delta;
+  }
+  return losses===0?100:100-100/(1+gains/losses);
+}
+function hourlyEntryConfirmation(payload,now=Date.now()){
+  if(!payload||payload.code!=='0'||!Array.isArray(payload.data))throw Error('BTC_1H_UNAVAILABLE');
+  const bars=payload.data.filter(r=>Array.isArray(r)&&r[8]==='1')
+    .map(r=>({ts:Number(r[0]),close:Number(r[4])})).sort((a,b)=>a.ts-b.ts);
+  if(bars.length<60||bars.some(r=>!Number.isFinite(r.ts)||!(r.close>0)))throw Error('BTC_1H_INVALID');
+  const last=bars.at(-1),closedAt=last.ts+HOUR;
+  if(last.ts>now+60_000||closedAt>now+60_000||now-closedAt>2*HOUR)throw Error('BTC_1H_STALE');
+  const closes=bars.map(r=>r.close),ema20=emaValue(closes.slice(-60),20),ema50=emaValue(closes.slice(-60),50),rsi14=rsiValue(closes);
+  let reason='BTC_1H_CONFIRMED';
+  if(last.close<ema50)reason='BTC_1H_BELOW_EMA50';
+  else if(last.close<ema20)reason='BTC_1H_BELOW_EMA20';
+  else if(rsi14>68)reason='BTC_1H_OVERBOUGHT';
+  return {
+    entryAllowed:reason==='BTC_1H_CONFIRMED',reason,close:last.close,
+    ema20:round(ema20),ema50:round(ema50),rsi14:round(rsi14),
+    candleAt:new Date(last.ts).toISOString()
+  };
+}
 function json(res,status,data){res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'});res.end(JSON.stringify(data));}
 function proxy(req,res){const headers={...req.headers,host:`127.0.0.1:${CHILD_PORT}`};const up=http.request({hostname:'127.0.0.1',port:CHILD_PORT,path:req.url,method:req.method,headers,timeout:80000},r=>{res.writeHead(r.statusCode||502,r.headers);r.pipe(res);});up.on('timeout',()=>up.destroy(Error('UPSTREAM_TIMEOUT')));up.on('error',()=>{if(!res.headersSent)json(res,502,{ok:false,error:'Gateway unavailable'});else res.destroy();});req.pipe(up);}
 function checkAuth(req,route){return new Promise((resolve,reject)=>{const up=http.request({hostname:'127.0.0.1',port:CHILD_PORT,path:route,method:'GET',headers:{cookie:req.headers.cookie||'',authorization:req.headers.authorization||''},timeout:65000},res=>{let text='';res.on('data',c=>{text+=c;if(text.length>1e6){res.destroy();reject(Error('AUTH_TOO_LARGE'));}});res.on('end',()=>resolve({status:res.statusCode,headers:res.headers,text}));res.on('error',reject);});up.on('timeout',()=>up.destroy(Error('AUTH_TIMEOUT')));up.on('error',reject);up.end();});}
@@ -119,10 +151,11 @@ async function tick(){
     const btcMin=requirePositive(btcBook.instrument.minSz,'BTC_MIN_SIZE');
     const bars=await btcDailyBars();
     const regime=dailyRegime(bars,btcBook.qty>=btcMin);
+    const entryRegime=dailyRegime(bars,false);
     const budget=regime.riskOn?riskBudget(bars,CAP_EUR):null;
     console.log('ANTON_V2_REGIME '+JSON.stringify({
-      action:regime.action,riskOn:regime.riskOn,close:round(regime.close),sma200:round(regime.sma200),
-      distancePct:round(regime.distancePct),candleAt:new Date(regime.candleAt).toISOString(),
+      action:regime.action,riskOn:regime.riskOn,entryRiskOn:entryRegime.riskOn,close:round(regime.close),sma200:round(regime.sma200),
+      distancePct:round(regime.distancePct),entryDistancePct:round(entryRegime.distancePct),candleAt:new Date(regime.candleAt).toISOString(),
       ...(budget?{annualizedVolPct:round(budget.annualizedVolPct),allocationPct:round(budget.allocationPct),targetExposureEur:round(budget.targetExposureEur)}:{})
     }));
     let exited=false;
@@ -158,7 +191,24 @@ async function tick(){
       console.log('ANTON_V2_NO_ENTRY '+JSON.stringify({reason:'BTC_REGIME_RISK_OFF'}));
       return;
     }
+    if(!entryRegime.riskOn){
+      console.log('ANTON_V2_NO_ENTRY '+JSON.stringify({reason:'BTC_DAILY_ENTRY_BAND_NOT_MET',distancePct:round(entryRegime.distancePct)}));
+      return;
+    }
     const now=Date.now();
+    let intraday;
+    try{
+      const payload=await publicGet('/api/v5/market/candles?instId=BTC-EUR&bar=1H&limit=80');
+      intraday=hourlyEntryConfirmation(payload,now);
+    }catch(e){
+      console.log('ANTON_V2_NO_ENTRY '+JSON.stringify({reason:'BTC_1H_CONFIRMATION_UNAVAILABLE',detail:String(e.message).slice(0,80)}));
+      return;
+    }
+    console.log('ANTON_V2_ENTRY_CONFIRMATION '+JSON.stringify(intraday));
+    if(!intraday.entryAllowed){
+      console.log('ANTON_V2_NO_ENTRY '+JSON.stringify({reason:intraday.reason,rsi14:intraday.rsi14,ema20:intraday.ema20,ema50:intraday.ema50,close:intraday.close}));
+      return;
+    }
     const politicalGate=await getPoliticalLiveGate(publicGet,now);
     console.log('ANTON_POLITICAL_LIVE_GATE '+JSON.stringify({
       entryAllowed:politicalGate.entryAllowed,reason:politicalGate.reason,matching:politicalGate.matching,
@@ -214,5 +264,5 @@ async function tick(){
 function page(){return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ANTON Signal — regime v2</title><style>body{background:#0b0f14;color:#edf3fc;font:15px system-ui;margin:0}main{max-width:900px;margin:auto;padding:18px}h1{font-size:25px}.muted{color:#a0b2c5}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px}.tile{padding:17px;background:#141d28;border:1px solid #344252;border-radius:14px}.value{font-size:23px;font-weight:750;margin-top:6px}table{width:100%;border-collapse:collapse;display:block;overflow-x:auto;white-space:nowrap}th,td{text-align:left;padding:12px 8px;border-bottom:1px solid #344252;font-size:13px}th,small{color:#a0b2c5}#error{color:#ff9f9f}</style></head><body><main><h1>ANTON Signal</h1><p class="muted">BTC-EUR новая стратегия · ETH/DOGE только сопровождение старых позиций · Spot / EUR</p><p id="error"></p><section class="grid"><div class="tile">Режим<div id="mode" class="value">—</div></div><div class="tile">Прибыль / убыток (оценка)<div id="pnl" class="value">—</div></div><div class="tile">Открытые позиции<div id="exposure" class="value">—</div></div><div class="tile">Свободно EUR на OKX<div id="available" class="value">—</div></div><div class="tile">Исполненные ордера<div id="fills" class="value">—</div></div><div class="tile">Лимит капитала<div class="value">${CAP_EUR} €</div><small>Не фактическая сумма на счёте</small></div></section><h2>Торговые пары</h2><table><thead><tr><th>Пара</th><th>Цена</th><th>Позиция</th><th>Стоимость</th><th>P&L (оценка)</th><th>Минимум / статус</th></tr></thead><tbody id="pairs"><tr><td colspan="6">Загрузка...</td></tr></tbody></table><p class="muted"><small id="updated">Обновление каждые 15 секунд. Результат оценочный, не банковская выписка.</small></p></main><script>const money=n=>n==null?'—':new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR'}).format(n);async function refresh(){try{const r=await fetch('/multi-data',{cache:'no-store'});const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'Ошибка данных');document.getElementById('error').textContent=d.degraded?(d.warning||'Диагностический режим'):'';for(const [id,value] of Object.entries({mode:d.mode,pnl:money(d.pnlEur),exposure:money(d.exposureEur),available:money(d.availableEur),fills:d.filledOrders==null?'—':d.filledOrders}))document.getElementById(id).textContent=value;document.getElementById('pairs').innerHTML=d.pairs.map(p=>'<tr><td>'+p.pair+'</td><td>'+money(p.price)+'</td><td>'+p.qty.toFixed(8)+'</td><td>'+money(p.exposure)+'</td><td>'+money(p.pnlEur)+'</td><td>'+(p.qty>0?(p.dust?'Технический остаток':'В позиции'):p.minTrade>d.orderLimitEur?'Минимум выше лимита':p.instrumentLive?'Ожидает сигнал':'Недоступна')+'</td></tr>').join('');document.getElementById('updated').textContent='Обновлено: '+new Date(d.updatedAt).toLocaleString('ru-RU')+' · Результат оценочный.';}catch(e){document.getElementById('error').textContent='Не удалось обновить: '+e.message;}}refresh();setInterval(refresh,15000);</script></body></html>`;}
 async function handler(req,res){const route=(req.url||'').split('?')[0];if(LIVE&&route==='/auto'&&req.method==='POST'){req.resume();return json(res,409,{ok:false,error:'MULTI_COORDINATOR_OWNS_ALL_TRADING'});}if(req.method==='GET'&&(route==='/dashboard'||route==='/multi-data')){let auth;try{auth=await checkAuth(req,'/dashboard'+(route==='/dashboard'?(req.url.slice(route.length)||''):''));}catch{return json(res,502,{ok:false,error:'Auth unavailable'});}if(auth.status!==200){res.writeHead(auth.status||502,{...auth.headers,'cache-control':'no-store'});return res.end(auth.text);}if(route==='/dashboard'){res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store','x-frame-options':'DENY','referrer-policy':'no-referrer'});return res.end(page());}try{if(!cache||Date.now()-cache.at>10000)cache={at:Date.now(),value:await portfolio()};return json(res,200,{ok:true,...cache.value,pairs:cache.value.pairs.map(p=>({pair:p.pair,price:p.price,qty:p.qty,exposure:round(p.exposure),pnlEur:round(p.pnlEur),minTrade:p.minTrade,instrumentLive:p.instrument.state==='live',dust:isReconciledDust(p)}))});}catch(e){console.error('ANTON_MULTI_DASHBOARD_ERROR '+e.message);try{return json(res,200,await dashboardFallback(e.message));}catch(f){console.error('ANTON_MULTI_DASHBOARD_FALLBACK_ERROR '+f.message);return json(res,502,{ok:false,error:'Данные OKX временно недоступны'});}}}return proxy(req,res);}
 function run(){if(!Number.isInteger(PORT)||PORT<1||PORT>65500||!Number.isFinite(MAX_ORDER)||!(MAX_ORDER>0)||MAX_ORDER>20||!Number.isFinite(CAP_EUR)||CAP_EUR<1||CAP_EUR>1000)throw Error('UNSAFE_CONFIGURATION');const child=spawn(process.execPath,[path.join(__dirname,'dashboard-launcher.js')],{env:{...process.env,PORT:String(CHILD_PORT),MARKET_ONLY_LIVE:'false'},stdio:'inherit'});const server=http.createServer((req,res)=>{handler(req,res).catch(e=>{console.error('ANTON_MULTI_HTTP_ERROR '+e.message);if(!res.headersSent)json(res,502,{ok:false,error:'Unavailable'});else res.destroy();});});server.listen(PORT,'0.0.0.0',()=>console.log('ANTON_MULTI_READY '+JSON.stringify({pairs:PAIRS,live:LIVE,maxOrderEur:MAX_ORDER,capEur:CAP_EUR,signalIntervalMinutes:SIGNAL_PERIOD/60000,allowDustReentry:ALLOW_DUST_REENTRY})));const initial=setTimeout(tick,60000),interval=setInterval(tick,SIGNAL_PERIOD);let closing=false;const stop=s=>{if(closing)return;closing=true;clearTimeout(initial);clearInterval(interval);server.close();child.kill(s);};process.once('SIGTERM',()=>stop('SIGTERM'));process.once('SIGINT',()=>stop('SIGINT'));child.once('exit',(code,s)=>{clearTimeout(initial);clearInterval(interval);server.close();if(!closing)console.error('ANTON_CHILD_EXIT '+JSON.stringify({code,s}));process.exit(code==null?1:code);});}
-if(require.main===module)run();module.exports={PAIRS,ledger,reportLedger,applyPnlBaseline,parsePnlBaselines,uniqueOrders,orderSize,sellSize,btcDailyBars,page,handler,tick,portfolio,run};
+if(require.main===module)run();module.exports={PAIRS,ledger,reportLedger,applyPnlBaseline,parsePnlBaselines,uniqueOrders,orderSize,sellSize,hourlyEntryConfirmation,btcDailyBars,page,handler,tick,portfolio,run};
 

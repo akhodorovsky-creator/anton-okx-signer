@@ -2,7 +2,7 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
-const {PAIRS,ledger,reportLedger,applyPnlBaseline,parsePnlBaselines,uniqueOrders,orderSize,sellSize,page}=require('./multi-live');
+const {PAIRS,ledger,reportLedger,applyPnlBaseline,parsePnlBaselines,uniqueOrders,orderSize,sellSize,hourlyEntryConfirmation,page}=require('./multi-live');
 const buy={ordId:'1',clOrdId:'ANTON1',instId:'ETH-EUR',side:'buy',accFillSz:'0.01',avgPx:'3000',fee:'-0.00001',feeCcy:'ETH',cTime:'100'};
 const sell={ordId:'2',clOrdId:'ANTON2',instId:'ETH-EUR',side:'sell',accFillSz:'0.005',avgPx:'3300',fee:'-0.02',feeCcy:'EUR',cTime:'200'};
 test('dashboard tracks three EUR pairs but labels BTC as the new-entry strategy',()=>{assert.deepEqual(PAIRS,['BTC-EUR','ETH-EUR','DOGE-EUR']);const html=page();assert.match(html,/BTC-EUR новая стратегия/);assert.match(html,/ETH\/DOGE только сопровождение/);assert.match(html,/Не фактическая сумма на счёте/);});
@@ -30,7 +30,21 @@ test('P&L baseline config is strict and pair-scoped',()=>{
 test('live coordinator consumes political gate without changing order cap or exit rules',()=>{
   const source=fs.readFileSync('multi-live.js','utf8');
   assert.match(source,/getPoliticalLiveGate/);
-  assert.match(source,/POLITICAL_6H_FILL_COOLDOWN/);
+  assert.match(source,/BTC_DAILY_ENTRY_BAND_NOT_MET/);
+  assert.match(source,/hourlyEntryConfirmation/);
   assert.match(source,/BTC_DAILY_REGIME_EXIT/);
   assert.match(source,/MAX_ORDER=Math\.min\(20/);
+
+  const hour=60*60_000,now=Date.UTC(2026,8,26,12,0,0);
+  const rows=Array.from({length:60},(_,i)=>{
+    const close=100+i*0.05+(i%2?0.1:-0.1);
+    return [String(now-(60-i)*hour),'0','0','0',String(close),'100','0','0','1'];
+  }).reverse();
+  const confirmed=hourlyEntryConfirmation({code:'0',data:rows},now);
+  assert.equal(confirmed.entryAllowed,true);
+  const weak=rows.map(r=>[...r]);
+  weak[0][4]='90';
+  const blocked=hourlyEntryConfirmation({code:'0',data:weak},now);
+  assert.equal(blocked.entryAllowed,false);
+  assert.equal(blocked.reason,'BTC_1H_BELOW_EMA50');
 });

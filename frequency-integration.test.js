@@ -20,6 +20,13 @@ function harness({riskOn=false,pending=false,ethPosition=false,ethPrice=3000,btc
       return [String(ts),String(close),String(close),String(close),String(close),'100','0','0','1'];
     });
   }
+  function hourlyRows(){
+    return Array.from({length:60},(_,i)=>{
+      const ts=now-(60-i)*60*MINUTE;
+      const close=63000+i*30+(i%2?60:-60);
+      return [String(ts),String(close),String(close),String(close),String(close),'100','0','0','1'];
+    }).reverse();
+  }
   const book=pair=>{
     if(btcQty>0&&pair==='BTC-EUR')return [{ordId:'btc-synthetic',clOrdId:'ANTONbtcsynthetic',instId:pair,side:'buy',accFillSz:String(btcQty),avgPx:'65000',fee:'0',feeCcy:'EUR',cTime:String(start-btcLastAge)}];
     if(ethPosition&&pair==='ETH-EUR')return [{ordId:'eth-synthetic',clOrdId:'ANTONethsynthetic',instId:pair,side:'buy',accFillSz:'0.005',avgPx:'3000',fee:'0',feeCcy:'EUR',cTime:String(start-DAY)}];
@@ -43,6 +50,7 @@ function harness({riskOn=false,pending=false,ethPosition=false,ethPrice=3000,btc
     else if(route.startsWith('/api/v5/public/instruments'))data=[{state:'live',minSz:pair==='BTC-EUR'?'0.0001':pair==='ETH-EUR'?'0.001':'10',lotSz:pair==='BTC-EUR'?'0.00000001':pair==='ETH-EUR'?'0.000001':'1'}];
     else if(route.startsWith('/api/v5/market/ticker'))data=[{last:String(prices[pair])}];
     else if(route.startsWith('/api/v5/market/history-candles'))data=dailyRows(parsed.searchParams.get('after'));
+    else if(route.startsWith('/api/v5/market/candles')&&parsed.searchParams.get('bar')==='1H')data=hourlyRows();
     else if(route==='/api/v5/trade/order')data=[{sCode:'0',ordId:'SIMULATED_ONLY'}];
     else throw Error('UNEXPECTED_TEST_ROUTE '+route);
     return {ok:true,json:async()=>({ok:true,code:'0',data})};
