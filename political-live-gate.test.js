@@ -25,9 +25,14 @@ test('unverified political context fails closed for new entries',()=>{
   const g=evaluatePoliticalGate({enabled:true,verified:false,matching:0},null);
   assert.equal(g.entryAllowed,false);assert.equal(g.reason,'POLITICAL_CONTEXT_UNVERIFIED');
 });
-test('confirmed positive reaction shortens only the fill cooldown',()=>{
-  const g=evaluatePoliticalGate(context(),{ret5:0.35,volRatio:1.8,candleAt:new Date(now).toISOString()});
-  assert.equal(g.entryAllowed,true);assert.equal(g.cooldownMs,EVENT_COOLDOWN);assert.equal(g.reason,'POLITICAL_MARKET_CONFIRMED_UP');
+test('confirmed positive geopolitical reaction does not accelerate entries, while crypto-specific reaction can',()=>{
+  const reaction={ret5:0.35,volRatio:1.8,candleAt:new Date(now).toISOString()};
+  const geo=evaluatePoliticalGate(context(),reaction);
+  assert.equal(geo.entryAllowed,true);assert.equal(geo.cooldownMs,NORMAL_COOLDOWN);
+  assert.equal(geo.reason,'POLITICAL_MARKET_CONFIRMED_UP_NO_ACCELERATION');
+  const crypto=evaluatePoliticalGate(context({subjectCounts:{CRYPTO:1,TRADE:0,GEOPOLITICS:0}}),reaction);
+  assert.equal(crypto.entryAllowed,true);assert.equal(crypto.cooldownMs,EVENT_COOLDOWN);
+  assert.equal(crypto.reason,'POLITICAL_CRYPTO_CONFIRMED_UP');
 });
 test('confirmed negative reaction blocks new long entries',()=>{
   const g=evaluatePoliticalGate(context(),{ret5:-0.35,volRatio:1.8,candleAt:new Date(now).toISOString()});
